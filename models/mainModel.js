@@ -24,5 +24,6 @@ db.Sequelize = Sequelize;
 
 
 db.User = require("./userModel")(sequelize,Sequelize)
+db.Tbl_typeproduct = require("./typeproductModel")(sequelize,Sequelize)
 
 module.exports = db;
