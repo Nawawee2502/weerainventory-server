@@ -1,12 +1,11 @@
 module.exports = (sequelize, DataTypes) => {
-    const Tbl_TypeproductModel = sequelize.define(
-      "tbl_typeproduct",
-
+    const UnitModel = sequelize.define(
+      "tbl_unit",
       {
-        typeproduct_code: {
+        unit_code: {
           type: DataTypes.STRING(10),
         },
-        typeproduct_name: {
+        unit_name: {
           type: DataTypes.STRING(255),
         },
         
@@ -19,6 +18,6 @@ module.exports = (sequelize, DataTypes) => {
         updatedAt: false,
       }
     );
-    Tbl_TypeproductModel.removeAttribute('id');
-    return Tbl_TypeproductModel;
+    UnitModel.removeAttribute('id');
+    return UnitModel;
   };

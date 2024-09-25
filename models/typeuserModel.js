@@ -1,15 +1,13 @@
 module.exports = (sequelize, DataTypes) => {
-    const Tbl_TypeproductModel = sequelize.define(
-      "tbl_typeproduct",
-
+    const Tbl_TypeuserModel = sequelize.define(
+      "tbl_typeuser",
       {
-        typeproduct_code: {
+        typeuser_code: {
           type: DataTypes.STRING(10),
         },
-        typeproduct_name: {
+        typeuser_name: {
           type: DataTypes.STRING(255),
         },
-        
       },
       {
         freezeTableName: true,
@@ -19,6 +17,6 @@ module.exports = (sequelize, DataTypes) => {
         updatedAt: false,
       }
     );
-    Tbl_TypeproductModel.removeAttribute('id');
-    return Tbl_TypeproductModel;
+    Tbl_TypeuserModel.removeAttribute('id');
+    return Tbl_TypeuserModel;
   };
