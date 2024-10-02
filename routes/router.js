@@ -1,5 +1,5 @@
 const { login, addUser, updateUser, userAll, deleteUser } = require("../controllers/loginController");
-const { addtypeproduct, updatetypeproduct, deletetypeproduct, typeproductAll,counttypeProduct} = require("../controllers/tbl_typeproductController")
+const { addtypeproduct, updatetypeproduct, deletetypeproduct, typeproductAll,counttypeProduct, searchtypeProductName, typeproductcode} = require("../controllers/tbl_typeproductController")
 const { addunit, updateunit, deleteunit, unitAll,countUnit} = require("../controllers/tbl_unitController")
 const { addproduct, updateproduct, deleteproduct, productAll,countProduct} = require("../controllers/tbl_productController")
 const { addbranch, updatebranch, deletebranch, branchAll,countBranch} = require("../controllers/tbl_branchModel")
@@ -28,6 +28,8 @@ module.exports = (app) => {
   router.post("/deleteTypeproduct",deletetypeproduct)
   router.post("/typeproductall",typeproductAll)
   router.post("/counttypeproduct",counttypeProduct)
+  router.post("/searchtypeproductname", searchtypeProductName)
+  router.post("/typeproductcode", typeproductcode)
 
   // unit
   router.post("/addunit",addunit)

@@ -55,6 +55,18 @@ exports.addtypeproduct = async (req, res) => {
       res.status(500).send({ message: error })
     }
   };
+
+  exports.typeproductcode = async (req, res) => {
+    try {
+      const typeproductcode = await tbl_typeproductModel.findOne({
+        order: [ [ 'typeproduct_code', 'DESC' ]],
+    });
+      res.status(200).send({ result: true, data: typeproductcode })
+    } catch (error) {
+      console.log(error)
+      res.status(500).send({ message: error })
+    }
+  }
   
   exports.counttypeProduct = async (req, res) => {
     try {
@@ -72,3 +84,55 @@ exports.addtypeproduct = async (req, res) => {
       res.status(500).send({ message: error })
     }
   };
+
+  exports.searchtypeProductName = async (req, res) => {
+    try {
+      // console.log( req.body.type_productname);
+      const { typeproduct_name } = req.body;
+      console.log((typeproduct_name));
+      const { Op } = require("sequelize");
+      // const amount = await tbl_typeproductModel.findAll({
+      //   where: {
+      //     typeproduct_name: {
+      //       [Op.like]: `% {type_productname} %`,
+      //     },
+      //   },
+      // });
+      const typeproductShow = await tbl_typeproductModel.findAll({ 
+        where: {
+          typeproduct_name: {
+            [Op.like]: `%${typeproduct_name}%`,
+          },
+        },
+       });
+      res.status(200).send({ result: true, data: typeproductShow })
+      
+    } catch (error) {
+      console.log(error)
+      res.status(500).send({ message: error })
+    }
+  };
+  
+
+//   exports.searchtypeProductName = async (req, res) => {
+//     try {
+//       const { typeproduct_name } = req.body;  // ดึง typeproduct_name จาก req.body
+//       console.log(typeproduct_name);  // ตรวจสอบค่าที่ได้จาก req.body
+      
+//       const { Op } = require("sequelize");
+
+//       const typeproductShow = await tbl_typeproductModel.findAll({ 
+//         where: {
+//           typeproduct_name: {
+//             [Op.like]: `%${typeproduct_name}%`,  // ใช้ string interpolation
+//           },
+//         },
+//       });
+
+//       res.status(200).send({ result: true, data: typeproductShow });
+      
+//     } catch (error) {
+//       console.log(error);
+//       res.status(500).send({ message: error });
+//     }
+// };
