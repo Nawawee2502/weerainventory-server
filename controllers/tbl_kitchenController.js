@@ -64,6 +64,18 @@ exports.kitchenAll = async (req, res) => {
   }
 };
 
+exports.kitchencode = async (req, res) => {
+  try {
+    const kitchencode = await tbl_kitchenModel.findOne({
+      order: [['kitchen_code', 'DESC']],
+    });
+    res.status(200).send({ result: true, data: kitchencode })
+  } catch (error) {
+    console.log(error)
+    res.status(500).send({ message: error })
+  }
+}
+
 exports.countKitchen = async (req, res) => {
   try {
     const { Op } = require("sequelize");
@@ -75,6 +87,29 @@ exports.countKitchen = async (req, res) => {
       },
     });
     res.status(200).send({ result: true, data: amount })
+  } catch (error) {
+    console.log(error)
+    res.status(500).send({ message: error })
+  }
+};
+
+exports.searchKitchenName = async (req, res) => {
+  try {
+    // console.log( req.body.type_productname);
+    const { Op } = require("sequelize");
+    const  {kitchen_name}  = await req.body;
+    // console.log((typeproduct_name));
+
+    
+    const kitchenShow = await tbl_kitchenModel.findAll({ 
+      where: {
+        kitchen_name: {
+          [Op.like]: `%${kitchen_name}%`
+        },
+      } 
+      });
+    res.status(200).send({ result: true, data: kitchenShow });
+    
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })

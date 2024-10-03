@@ -70,6 +70,18 @@ exports.productAll = async (req, res) => {
   }
 };
 
+exports.productcode = async (req, res) => {
+  try {
+    const productcode = await tbl_productModel.findOne({
+      order: [['product_code', 'DESC']],
+    });
+    res.status(200).send({ result: true, data: productcode })
+  } catch (error) {
+    console.log(error)
+    res.status(500).send({ message: error })
+  }
+}
+
 exports.countProduct = async (req, res) => {
   try {
     const { Op } = require("sequelize");
@@ -87,4 +99,25 @@ exports.countProduct = async (req, res) => {
   }
 };
 
+exports.searchProductName = async (req, res) => {
+  try {
+    // console.log( req.body.type_productname);
+    const { Op } = require("sequelize");
+    const  {product_name}  = await req.body;
+    // console.log((typeproduct_name));
 
+    
+    const productShow = await tbl_productModel.findAll({ 
+      where: {
+        product_name: {
+          [Op.like]: `%${product_name}%`
+        },
+      } 
+      });
+    res.status(200).send({ result: true, data: productShow });
+    
+  } catch (error) {
+    console.log(error)
+    res.status(500).send({ message: error })
+  }
+};

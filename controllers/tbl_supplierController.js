@@ -61,6 +61,18 @@ exports.addsupplier = async (req, res) => {
       res.status(500).send({ message: error })
     }
   };
+
+  exports.suppliercode = async (req, res) => {
+    try {
+      const suppliercode = await tbl_supplierModel.findOne({
+        order: [['supplier_code', 'DESC']],
+      });
+      res.status(200).send({ result: true, data: suppliercode })
+    } catch (error) {
+      console.log(error)
+      res.status(500).send({ message: error })
+    }
+  }
   
   exports.countSupplier = async (req, res) => {
     try {
@@ -79,3 +91,25 @@ exports.addsupplier = async (req, res) => {
     }
   };
   
+  exports.searchSupplierName = async (req, res) => {
+    try {
+      // console.log( req.body.type_productname);
+      const { Op } = require("sequelize");
+      const  {supplier_name}  = await req.body;
+      // console.log((typeproduct_name));
+
+      
+      const supplierShow = await tbl_supplierModel.findAll({ 
+        where: {
+          supplier_name: {
+            [Op.like]: `%${supplier_name}%`
+          },
+        } 
+        });
+      res.status(200).send({ result: true, data: supplierShow });
+      
+    } catch (error) {
+      console.log(error)
+      res.status(500).send({ message: error })
+    }
+  };

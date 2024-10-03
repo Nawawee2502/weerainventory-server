@@ -68,6 +68,18 @@ exports.branchAll = async (req, res) => {
   }
 };
 
+exports.branchcode = async (req, res) => {
+  try {
+    const branchcode = await tbl_branchModel.findOne({
+      order: [['branch_code', 'DESC']],
+    });
+    res.status(200).send({ result: true, data: branchcode })
+  } catch (error) {
+    console.log(error)
+    res.status(500).send({ message: error })
+  }
+}
+
 exports.countBranch = async (req, res) => {
   try {
     const { Op } = require("sequelize");
@@ -79,6 +91,29 @@ exports.countBranch = async (req, res) => {
       },
     });
     res.status(200).send({ result: true, data: amount })
+  } catch (error) {
+    console.log(error)
+    res.status(500).send({ message: error })
+  }
+};
+
+exports.searchBranchName = async (req, res) => {
+  try {
+    // console.log( req.body.type_productname);
+    const { Op } = require("sequelize");
+    const { branch_name } = await req.body;
+    // console.log((typeproduct_name));
+
+
+    const branchShow = await tbl_branchModel.findAll({
+      where: {
+        branch_name: {
+          [Op.like]: `%${branch_name}%`
+        },
+      }
+    });
+    res.status(200).send({ result: true, data: branchShow });
+
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
