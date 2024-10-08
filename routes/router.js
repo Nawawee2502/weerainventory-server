@@ -5,7 +5,7 @@ const { addproduct, updateproduct, deleteproduct, productAll,countProduct, searc
 const { addbranch, updatebranch, deletebranch, branchAll,countBranch, searchBranchName, branchcode} = require("../controllers/tbl_branchModel")
 const { addkitchen, updatekitchen, deletekitchen, kitchenAll,countKitchen, searchKitchenName, kitchencode} = require("../controllers/tbl_kitchenController")
 const { addsupplier, updatesupplier, deletesupplier, supplierAll,countSupplier, searchSupplierName, suppliercode} = require("../controllers/tbl_supplierController")
-const { addtypeuser, updatetypeuser, deletetypeuser, typeuserAll,counttypeUser} = require("../controllers/tbl_typeuserController")
+const { addtypeuser, updatetypeuser, deletetypeuser, typeuserAll,counttypeUser, searchUserTypeName, typeUsercode} = require("../controllers/tbl_typeuserController")
 const { addtypeuserpermission, updatetypeuserpermission, deletetypeuserpermission, typeuserpermissionAll,countTypeuserpermission} = require("../controllers/tbl_typeuserpermissionController")
 
 
@@ -82,6 +82,8 @@ module.exports = (app) => {
   router.post("/deletetypeuser",deletetypeuser)
   router.post("/typeuserall",typeuserAll)
   router.post("/countTypeuser",counttypeUser)
+  router.post("/typeusercode", typeUsercode) 
+  router.post("/searchtypeusername", searchUserTypeName)
 
   // type_userpermission
   router.post("/addtypeuserpermission",addtypeuserpermission)
