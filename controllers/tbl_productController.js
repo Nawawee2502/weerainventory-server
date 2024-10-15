@@ -91,37 +91,37 @@ exports.addproduct = async (req, res) => {
     })
     console.log("%%%%%%%%%%%%%%%%%%%%%%%%");
     console.log(req.file);
-    if (!req.file) {
-      res.status(400).send('No file uploaded.');
-    }
+    // if (!req.file) {
+    //   res.status(400).send('No file uploaded.');
+    // }
 
-    upload.single('product_img')(req, res, (err) => {
-      // if (err instanceof multer.MulterError) {
-      //   // กรณีมีข้อผิดพลาดจาก multer เช่น ขนาดไฟล์เกิน
-      //   return res.status(400).send(`เกิดข้อผิดพลาดจาก Multer: ${err.message}`);
-      // } else if (err) {
-      //   // กรณีมีข้อผิดพลาดอื่นๆ เช่น ไม่ใช่ไฟล์รูปภาพ
-      //   return res.status(400).send(`เกิดข้อผิดพลาด: ${err.message}`);
-      // }
+    // upload.single('product_img')(req, res, (err) => {
+    //   // if (err instanceof multer.MulterError) {
+    //   //   // กรณีมีข้อผิดพลาดจาก multer เช่น ขนาดไฟล์เกิน
+    //   //   return res.status(400).send(`เกิดข้อผิดพลาดจาก Multer: ${err.message}`);
+    //   // } else if (err) {
+    //   //   // กรณีมีข้อผิดพลาดอื่นๆ เช่น ไม่ใช่ไฟล์รูปภาพ
+    //   //   return res.status(400).send(`เกิดข้อผิดพลาด: ${err.message}`);
+    //   // }
 
-      // // หากไม่มีข้อผิดพลาดและอัปโหลดสำเร็จ
-      // if (!req.file) {
-      //   return res.status(400).send('ไม่พบไฟล์ที่ถูกอัปโหลด');
-      // }
+    //   // // หากไม่มีข้อผิดพลาดและอัปโหลดสำเร็จ
+    //   // if (!req.file) {
+    //   //   return res.status(400).send('ไม่พบไฟล์ที่ถูกอัปโหลด');
+    //   // }
 
-      // res.send(`อัปโหลดไฟล์สำเร็จ: ${req.file.filename}`);
-    });
-
-    // เขียนไฟล์
-    // fs.writeFile(filePath, content, (err) => {
-    //   if (err) {
-    //     console.error('เกิดข้อผิดพลาดในการบันทึกไฟล์:', err);
-    //   } else {
-    //     console.log('บันทึกไฟล์สำเร็จ:', filePath);
-    //   }
+    //   // res.send(`อัปโหลดไฟล์สำเร็จ: ${req.file.filename}`);
     // });
-    console.log('##############')
-    console.log(req.body.product_img)
+
+    // // เขียนไฟล์
+    // // fs.writeFile(filePath, content, (err) => {
+    // //   if (err) {
+    // //     console.error('เกิดข้อผิดพลาดในการบันทึกไฟล์:', err);
+    // //   } else {
+    // //     console.log('บันทึกไฟล์สำเร็จ:', filePath);
+    // //   }
+    // // });
+    // console.log('##############')
+    // console.log(req.body.product_img)
     res.status(200).send({ result: true })
 
   } catch (error) {
