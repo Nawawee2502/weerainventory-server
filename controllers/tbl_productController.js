@@ -166,23 +166,31 @@ exports.productAll = async (req, res) => {
 
 exports.productAlltypeproduct = async (req, res) => {
   try {
-
+    // const typeproduct_code = req.body;
+    // const { offset, limit, typeproduct_code } = req.body;
+    // console.log("+++++++++++++++++")
+    // console.log(typeproduct_code)
+    
     // Post.find({ where: { ...}, include: [User]})
     const productShow = await tbl_productModel.findAll({
+      
+      
+      // offset: offset, limit: limit,
       include: [
         {
           model: tbl_TypeproductModel,
-          required: true,
+          // where: { typeproduct_code: typeproduct_code },
+          // required: true,
         },
         {
           model: tbl_unit,
           as: 'productUnit1',
-          required: true,
+          // required: true,
         },
         {
           model: tbl_unit,
           as: 'productUnit2',
-          required: true,
+          // required: true,
         },
       ],
     });
