@@ -31,7 +31,8 @@ const {
   countProduct,
   searchProductName,
   productcode,
-  productAlltypeproduct
+  productAlltypeproduct,
+  SearchProductCode,
 } = require("../controllers/tbl_productController");
 const {
   addbranch,
@@ -77,6 +78,22 @@ const {
   countTypeuserpermission,
 } = require("../controllers/tbl_typeuserpermissionController");
 
+const {
+  addWh_pos,
+  updateWh_pos,
+  deleteWh_pos,
+  Wh_posAlljoindt,
+  Wh_posAllrdate
+} = require("../controllers/wh_posController")
+
+const {
+  addWh_posdt,
+  updateWh_posdt,
+  deleteWh_posdt,
+  countWh_posdt,
+  Wh_posdtAlljoindt,
+} = require("../controllers/wh_posdtController")
+
 // const { checkAuth } = require("../middleware/checkAuth");
 const router = require("express").Router();
 
@@ -118,7 +135,8 @@ router.post("/productall", productAll);
 router.post("/countproduct", countProduct);
 router.post("/searchproductname", searchProductName);
 router.post("/productcode", productcode);
-router.post("/productalltypeproduct", productAlltypeproduct)
+router.post("/productalltypeproduct", productAlltypeproduct);
+router.post("/SearchProductCode", SearchProductCode);
 
 // branch
 router.post("/addbranch", addbranch);
@@ -162,6 +180,20 @@ router.post("/updatetypeuserpermission", updatetypeuserpermission);
 router.post("/deletetypeuserpermission", deletetypeuserpermission);
 router.post("/typeuserpermissionall", typeuserpermissionAll);
 router.post("/countTypeuserpermissionall", countTypeuserpermission);
+
+//warehouse
+//ใบสั่งซ์้อสินค้าให้ Supplier
+router.post("/addWh_pos", addWh_pos);
+router.post("/updateWh_pos", updateWh_pos);
+router.post("/deleteWh_pos", deleteWh_pos);
+router.post("/wh_posAlljoindt", Wh_posAlljoindt);
+router.post("/Wh_posAllrdate", Wh_posAllrdate)
+
+router.post("/addWh_posdt", addWh_posdt);
+router.post("/updatewh_posdt", updateWh_posdt);
+router.post("/deletewh_posdt", deleteWh_posdt);
+router.post("/countWh_posdt", countWh_posdt);
+router.post("/Wh_posdtAlljoindt", Wh_posdtAlljoindt)
 
 module.exports = router;
 //(app) => {
