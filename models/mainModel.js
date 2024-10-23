@@ -35,8 +35,55 @@ db.Tbl_typeuserpermission = require("./typeuserpermissionModel")(sequelize, Sequ
 db.Tbl_user = require("./userModel")(sequelize, Sequelize)
 
 // Warehouse
+db.Wh_stockcard = require("./wh_stockcardModel")(sequelize, Sequelize)
 db.Wh_pos = require("./wh_posModel")(sequelize, Sequelize)
 db.Wh_posdt = require("./wh_posdtModel")(sequelize, Sequelize)
+db.Wh_saf = require("./wh_safModel")(sequelize, Sequelize)
+db.Wh_safdt = require("./wh_safdtModel")(sequelize, Sequelize)
+db.Wh_rfs = require("./wh_rfsModel")(sequelize, Sequelize)
+db.Wh_rfsdt = require("./wh_rfsdtModel")(sequelize, Sequelize)
+db.Wh_rfk = require("./wh_rfkModel")(sequelize, Sequelize)
+db.Wh_rfkdt = require("./wh_rfkdtModel")(sequelize, Sequelize)
+db.Wh_dpk = require("./wh_dpkModel")(sequelize, Sequelize)
+db.Wh_dpkdt = require("./wh_dpkdtModel")(sequelize, Sequelize)
+db.Wh_dpb = require("./wh_dpbModel")(sequelize, Sequelize)
+db.Wh_dpbdt = require("./wh_dpbdtModel")(sequelize, Sequelize)
+
+// Kitchen
+db.Kt_stockcard = require("./kt_stockcardModel")(sequelize, Sequelize)
+db.Kt_pow = require("./kt_powModel")(sequelize, Sequelize)
+db.Kt_powdt = require("./kt_powdtModel")(sequelize, Sequelize)
+db.Kt_rfs = require("./kt_rfsModel")(sequelize, Sequelize)
+db.Kt_rfsdt = require("./kt_rfsdtModel")(sequelize, Sequelize)
+db.Kt_rfw = require("./kt_rfwModel")(sequelize, Sequelize)
+db.Kt_rfwdt = require("./kt_rfwdtModel")(sequelize, Sequelize)
+db.Kt_grf = require("./kt_grfModel")(sequelize, Sequelize)
+db.Kt_grfdt = require("./kt_grfdtModel")(sequelize, Sequelize)
+db.Kt_prf = require("./kt_prfModel")(sequelize, Sequelize)
+db.Kt_prfdt = require("./kt_prfdtModel")(sequelize, Sequelize)
+db.Kt_trw = require("./kt_trwModel")(sequelize, Sequelize)
+db.Kt_trwdt = require("./kt_trwdtModel")(sequelize, Sequelize)
+db.Kt_dpb = require("./kt_dpbModel")(sequelize, Sequelize)
+db.Kt_dpbdt = require("./kt_dpbdtModel")(sequelize, Sequelize)
+db.Kt_saf = require("./kt_safModel")(sequelize, Sequelize)
+db.Kt_safdt = require("./kt_safdtModel")(sequelize, Sequelize)
+
+
+//branch
+db.Br_stockcard = require("./br_stockcardModel")(sequelize, Sequelize)
+db.Br_minnum_stock = require("./br_minnum_stockModel")(sequelize, Sequelize)
+db.Br_saf = require("./br_safModel")(sequelize, Sequelize)
+db.Br_safdt = require("./br_safdtModel")(sequelize, Sequelize)
+db.Br_pow = require("./br_powModel")(sequelize, Sequelize)
+db.Br_powdt = require("./br_powdtModel")(sequelize, Sequelize)
+db.Br_rfw = require("./br_rfwModel")(sequelize, Sequelize)
+db.Br_rfwdt = require("./br_rfwdtModel")(sequelize, Sequelize)
+db.Br_rfk = require("./br_rfkModel")(sequelize, Sequelize)
+db.Br_rfkdt = require("./br_rfkdtModel")(sequelize, Sequelize)
+db.Br_rfs = require("./br_rfsModel")(sequelize, Sequelize)
+db.Br_rfsdt = require("./br_rfsdtModel")(sequelize, Sequelize)
+db.Br_grf = require("./br_grfModel")(sequelize, Sequelize)
+db.Br_grfdt = require("./br_grfdtModel")(sequelize, Sequelize)
 
 // inner join tbl_product
 db.Tbl_product.belongsTo(db.Tbl_typeproduct, {

@@ -14,6 +14,7 @@ exports.addWh_posdt = async (req, res) => {
         uprice: req.body.uprice,
         amt: req.body.amt,
       })
+      console.log("API SERVER");
       res.status(200).send({ result: true })
     } catch (error) {
       console.log(error)
@@ -112,4 +113,5 @@ exports.addWh_posdt = async (req, res) => {
       res.status(500).send({ message: error })
     }
   };
+  
   

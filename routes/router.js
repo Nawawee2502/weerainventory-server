@@ -83,7 +83,9 @@ const {
   updateWh_pos,
   deleteWh_pos,
   Wh_posAlljoindt,
-  Wh_posAllrdate
+  Wh_posAllrdate,
+  refno,
+  searchWh_posRunno,
 } = require("../controllers/wh_posController")
 
 const {
@@ -92,6 +94,7 @@ const {
   deleteWh_posdt,
   countWh_posdt,
   Wh_posdtAlljoindt,
+  Wh_posdtAllinnerjoin,
 } = require("../controllers/wh_posdtController")
 
 // const { checkAuth } = require("../middleware/checkAuth");
@@ -188,12 +191,14 @@ router.post("/updateWh_pos", updateWh_pos);
 router.post("/deleteWh_pos", deleteWh_pos);
 router.post("/wh_posAlljoindt", Wh_posAlljoindt);
 router.post("/Wh_posAllrdate", Wh_posAllrdate)
+router.post("/refno", refno);
 
 router.post("/addWh_posdt", addWh_posdt);
 router.post("/updatewh_posdt", updateWh_posdt);
 router.post("/deletewh_posdt", deleteWh_posdt);
 router.post("/countWh_posdt", countWh_posdt);
 router.post("/Wh_posdtAlljoindt", Wh_posdtAlljoindt)
+router.post("/searchWh_posRunno", searchWh_posRunno)
 
 module.exports = router;
 //(app) => {

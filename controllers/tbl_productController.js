@@ -112,16 +112,8 @@ exports.productAll = async (req, res) => {
 
 exports.productAlltypeproduct = async (req, res) => {
   try {
-    // const typeproduct_code = req.body;
-    // const { offset, limit, typeproduct_code } = req.body;
-    // console.log("+++++++++++++++++")
-    // console.log(typeproduct_code)
-    
-    // Post.find({ where: { ...}, include: [User]})
     const productShow = await tbl_productModel.findAll({
-      
-      
-      // offset: offset, limit: limit,
+
       include: [
         {
           model: tbl_TypeproductModel,
@@ -150,7 +142,7 @@ exports.productAlltypeproduct = async (req, res) => {
 
 exports.SearchProductCode = async (req, res) => {
   try {
-    const {product_code} = req.body;
+    const { product_code } = req.body;
     const { Op } = require("sequelize");
 
 
@@ -172,7 +164,7 @@ exports.SearchProductCode = async (req, res) => {
           required: true,
         },
       ],
-      where: {product_code: {[Op.eq]: product_code}},
+      where: { product_code: { [Op.eq]: product_code } },
       // where: { trdate: {[Op.between]: [rdate1,rdate2]}},
     });
     console.log(productShow)
@@ -221,6 +213,22 @@ exports.searchProductName = async (req, res) => {
 
 
     const productShow = await tbl_productModel.findAll({
+      include: [
+        {
+          model: tbl_TypeproductModel,
+          required: true,
+        },
+        {
+          model: tbl_unit,
+          as: 'productUnit1',
+          required: true,
+        },
+        {
+          model: tbl_unit,
+          as: 'productUnit2',
+          required: true,
+        },
+      ],
       where: {
         product_name: {
           [Op.like]: `%${product_name}%`

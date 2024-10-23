@@ -1,6 +1,6 @@
 module.exports = (sequelize, DataTypes) => {
-    const Wh_posModel = sequelize.define(
-      "wh_pos",
+    const Br_rfwModel = sequelize.define(
+      "br_rfw",
       {
         refno: {
           type: DataTypes.STRING(20),
@@ -17,11 +17,11 @@ module.exports = (sequelize, DataTypes) => {
         monthh: {
             type: DataTypes.INTEGER,
         },
-        supplier_code: {
+        kitchen_code: {
             type: DataTypes.STRING(10),
         },
         branch_code: {
-            type: DataTypes.STRING(10),
+          type: DataTypes.STRING(10),
         },
         total: {
             type: DataTypes.DOUBLE(12,2),
@@ -30,9 +30,9 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.STRING(10),
         },
         created_at: {
-          type: DataTypes.STRING(255),
+          type: DataTypes.STRING(50),
         },
-        
+      
       },
       {
         freezeTableName: true,
@@ -42,6 +42,6 @@ module.exports = (sequelize, DataTypes) => {
         updatedAt: false,
       }
     );
-    Wh_posModel.removeAttribute('id');
-    return Wh_posModel;
+    Br_rfwModel.removeAttribute('id');
+    return Br_rfwModel;
   };

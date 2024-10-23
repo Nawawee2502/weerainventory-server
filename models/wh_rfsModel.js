@@ -1,6 +1,6 @@
 module.exports = (sequelize, DataTypes) => {
-    const Wh_posModel = sequelize.define(
-      "wh_pos",
+    const Wh_rfsModel = sequelize.define(
+      "wh_rfs",
       {
         refno: {
           type: DataTypes.STRING(20),
@@ -30,9 +30,9 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.STRING(10),
         },
         created_at: {
-          type: DataTypes.STRING(255),
+          type: DataTypes.STRING(50),
         },
-        
+      
       },
       {
         freezeTableName: true,
@@ -42,6 +42,6 @@ module.exports = (sequelize, DataTypes) => {
         updatedAt: false,
       }
     );
-    Wh_posModel.removeAttribute('id');
-    return Wh_posModel;
+    Wh_rfsModel.removeAttribute('id');
+    return Wh_rfsModel;
   };
