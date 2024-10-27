@@ -4,9 +4,11 @@ module.exports = (sequelize, DataTypes) => {
       {
         refno: {
           type: DataTypes.STRING(20),
+          primaryKey: true
         },
         product_code: {
           type: DataTypes.STRING(25),
+          primaryKey: true
         },
         unit_code: {
           type: DataTypes.STRING(25),

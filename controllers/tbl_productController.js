@@ -112,27 +112,25 @@ exports.productAll = async (req, res) => {
 
 exports.productAlltypeproduct = async (req, res) => {
   try {
-    const productShow = await tbl_productModel.findAll({
+    const { offset, limit } = req.body; // รับค่า offset และ limit
 
+    const productShow = await tbl_productModel.findAll({
+      offset: offset,  // กำหนด offset
+      limit: limit,    // กำหนด limit
       include: [
         {
           model: tbl_TypeproductModel,
-          // where: { typeproduct_code: typeproduct_code },
-          // required: true,
         },
         {
           model: tbl_unit,
           as: 'productUnit1',
-          // required: true,
         },
         {
           model: tbl_unit,
           as: 'productUnit2',
-          // required: true,
         },
       ],
     });
-    console.log(productShow)
     res.status(200).send({ result: true, data: productShow })
   } catch (error) {
     console.log(error)
@@ -191,11 +189,26 @@ exports.countProduct = async (req, res) => {
   try {
     const { Op } = require("sequelize");
     const amount = await tbl_productModel.count({
+      include: [
+        {
+          model: tbl_TypeproductModel,
+        },
+        {
+          model: tbl_unit,
+          as: 'productUnit1',
+        },
+        {
+          model: tbl_unit,
+          as: 'productUnit2',
+        },
+      ],
       where: {
         product_code: {
-          [Op.gt]: 0,
+          [Op.gt]: '0', // เปลี่ยนจาก 0 เป็น '0' เพราะ product_code อาจเป็น string
         },
       },
+      distinct: true,  // เพิ่ม distinct เพื่อป้องกันการนับซ้ำจากการ join
+      col: 'product_code'  // ระบุคอลัมน์ที่ต้องการนับ
     });
     res.status(200).send({ result: true, data: amount })
   } catch (error) {

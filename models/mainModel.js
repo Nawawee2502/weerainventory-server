@@ -123,15 +123,21 @@ db.Tbl_unit.hasMany(db.Tbl_product, {
 
 //inner join warehouse
 // ใบสั่งสินค้าให้ Supplier
+
+// *********************แก้ไขใหม่*********************
 db.Wh_pos.hasMany(db.Wh_posdt, {
   foreignKey: 'refno',  // foreignKey ของ Type Product
-  sourceKey: 'refno', // sourceKey ของ Product
+  sourceKey: 'refno' // sourceKey ของ Product
+  // as: 'postoposdt'
 });
 
+// *********************แก้ไขใหม่*********************
 db.Wh_posdt.belongsTo(db.Wh_pos, {
   foreignKey: 'refno',  // foreignKey ของ Type Product
-  targetKey: 'refno', // targetKey ของ Product
+  targetKey: 'refno' // targetKey ของ Product
+  // as: 'posdttopos'
 });
+
 
 db.Wh_pos.belongsTo(db.Tbl_supplier, {
   foreignKey: 'supplier_code',  // foreignKey ของ Type Product

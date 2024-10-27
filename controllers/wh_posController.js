@@ -1,8 +1,9 @@
 const wh_posModel = require("../models/mainModel").Wh_pos;
 const wh_posdtModel = require("../models/mainModel").Wh_posdt;
+const unitModel = require("../models/mainModel").Tbl_unit;
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const { Tbl_supplier, sequelize } = require("../models/mainModel");
+const { Tbl_supplier, sequelize, Tbl_product } = require("../models/mainModel");
 const { Tbl_branch } = require("../models/mainModel");
 
 exports.addWh_pos = async (req, res) => {
@@ -123,9 +124,49 @@ exports.Wh_posAlljoindt = async (req, res) => {
       include: [
         {
           model: wh_posdtModel,
-          required: true,
+          // as: "postoposdt",
+          // required: true,
         },
       ],
+      // where: { refno: 'WPOS2410013' }
+      // offset:offset,limit:limit 
+    });
+    res.status(200).send({ result: true, data: wh_posShow })
+  } catch (error) {
+    console.log(error)
+    res.status(500).send({ message: error })
+  }
+};
+
+// *********************แก้ไขใหม่********************* 
+exports.Wh_posByRefno = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    const wh_posShow = await wh_posModel.findOne({
+      include: [
+        {
+          model: wh_posdtModel,
+          include: [{
+            model: Tbl_product,
+            include: [
+              {
+                model: unitModel,
+                as: 'productUnit1',
+                required: true,
+              },
+              {
+                model: unitModel,
+                as: 'productUnit2',
+                required: true,
+              },
+            ],
+          }],
+          // as: "postoposdt",
+          // required: true,
+        },
+      ],
+      where: { refno: refno }
       // offset:offset,limit:limit 
     });
     res.status(200).send({ result: true, data: wh_posShow })

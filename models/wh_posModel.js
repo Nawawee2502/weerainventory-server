@@ -4,6 +4,7 @@ module.exports = (sequelize, DataTypes) => {
       {
         refno: {
           type: DataTypes.STRING(20),
+          primaryKey: true
         },
         rdate: {
           type: DataTypes.STRING(25),
