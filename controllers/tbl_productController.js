@@ -175,15 +175,31 @@ exports.SearchProductCode = async (req, res) => {
 
 exports.productcode = async (req, res) => {
   try {
-    const productcode = await tbl_productModel.findOne({
-      order: [['product_code', 'DESC']],
+    const { Op } = require("sequelize");  // เพิ่มบรรทัดนี้
+    
+    // ดึงข้อมูลทั้งหมดแล้วส่งไปให้ UI คำนวณ
+    const allProducts = await tbl_productModel.findAll({
+      attributes: ['product_code'],
+      where: {
+        product_code: {
+          [Op.not]: null
+        }
+      },
+      order: [['product_code', 'DESC']]
     });
-    res.status(200).send({ result: true, data: productcode })
+
+    res.status(200).send({ 
+      result: true, 
+      data: allProducts 
+    });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log(error);
+    res.status(500).send({ 
+      result: false,
+      message: error.message || 'An error occurred while fetching product codes'
+    });
   }
-}
+};
 
 exports.countProduct = async (req, res) => {
   try {
