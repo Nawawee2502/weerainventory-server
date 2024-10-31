@@ -118,23 +118,21 @@ exports.Wh_posAllrdate = async (req, res) => {
 
 exports.Wh_posAlljoindt = async (req, res) => {
   try {
-    // const { offset, limit } = req.body;
+    const { offset, limit } = req.body;
 
     const wh_posShow = await wh_posModel.findAll({
+      offset: offset,  // กำหนด offset
+      limit: limit,    // กำหนด limit
       include: [
         {
           model: wh_posdtModel,
-          // as: "postoposdt",
-          // required: true,
         },
       ],
-      // where: { refno: 'WPOS2410013' }
-      // offset:offset,limit:limit 
     });
     res.status(200).send({ result: true, data: wh_posShow })
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log(error);
+    res.status(500).send({ message: error });
   }
 };
 

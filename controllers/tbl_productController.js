@@ -124,11 +124,11 @@ exports.productAlltypeproduct = async (req, res) => {
         {
           model: tbl_unit,
           as: 'productUnit1',
-        },
+        }, 
         {
           model: tbl_unit,
           as: 'productUnit2',
-        },
+        }, 
       ],
     });
     res.status(200).send({ result: true, data: productShow })
