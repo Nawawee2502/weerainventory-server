@@ -105,10 +105,10 @@ exports.productAll = async (req, res) => {
     const productShow = await tbl_productModel.findAll({ offset: offset, limit: limit });
     res.status(200).send({ result: true, data: productShow })
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
-  }
-};
+    console.log(error) 
+    res.status(500).send({ message: error }) 
+  } 
+}; 
 
 exports.productAlltypeproduct = async (req, res) => {
   try {
@@ -117,7 +117,7 @@ exports.productAlltypeproduct = async (req, res) => {
     const productShow = await tbl_productModel.findAll({
       offset: offset,  // กำหนด offset
       limit: limit,    // กำหนด limit
-      include: [
+      include: [    
         {
           model: tbl_TypeproductModel,
         },

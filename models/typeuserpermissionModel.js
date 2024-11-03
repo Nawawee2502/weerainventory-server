@@ -71,7 +71,7 @@ module.exports = (sequelize, DataTypes) => {
         menu_setkt_receipt_from_supplier: {
             type: DataTypes.STRING(10),
         },
-        menu_setkt_receipt_form_wh: {
+        menu_setkt_receipt_from_wh: {
             type: DataTypes.STRING(10),
         },
         menu_setkt_goods_requisition: {

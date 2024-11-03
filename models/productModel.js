@@ -2,9 +2,6 @@ module.exports = (sequelize, DataTypes) => {
   const ProductModel = sequelize.define(
     "tbl_product",
     {
-      product_img: {
-        type: DataTypes.STRING(255),
-      },
       product_code: {
         type: DataTypes.STRING(10),
       },
