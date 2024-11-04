@@ -30,9 +30,23 @@ db.Tbl_product = require("./productModel")(sequelize, Sequelize)
 db.Tbl_branch = require("./branchModel")(sequelize, Sequelize)
 db.Tbl_kitchen = require("./kitchenModel")(sequelize, Sequelize)
 db.Tbl_supplier = require("./supplierModel")(sequelize, Sequelize)
+
+//set User
 db.Tbl_typeuser = require("./typeuserModel")(sequelize, Sequelize)
 db.Tbl_typeuserpermission = require("./typeuserpermissionModel")(sequelize, Sequelize)
 db.Tbl_user = require("./userModel")(sequelize, Sequelize)
+
+// User
+db.User.belongsTo(db.Tbl_typeuser, {
+  foreignKey: 'typeuser_code',
+  targetKey: 'typeuser_code'
+});
+
+db.Tbl_typeuser.hasMany(db.User, {
+  foreignKey: 'typeuser_code',
+  sourceKey: 'typeuser_code'
+});
+
 
 // Warehouse
 db.Wh_stockcard = require("./wh_stockcardModel")(sequelize, Sequelize)

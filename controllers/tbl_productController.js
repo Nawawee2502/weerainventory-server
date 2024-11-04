@@ -53,6 +53,7 @@ exports.addproduct = async (req, res) => {
       retail_unit_code: req.body.retail_unit_code,
       retail_unit_price: req.body.retail_unit_price,
       unit_conversion_factor: req.body.unit_conversion_factor,
+      tax1:req.body.tax1,
     })
     res.status(200).send({ result: true })
 
@@ -74,6 +75,7 @@ exports.updateproduct = async (req, res) => {
         retail_unit_price: req.body.retail_unit_price,
         unit_conversion_factor: req.body.unit_conversion_factor,
         typeproduct_code: req.body.typeproduct_code,
+        tax1:req.body.tax1,
       },
       { where: { product_code: req.body.product_code } }
     );

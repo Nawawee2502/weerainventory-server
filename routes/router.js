@@ -4,6 +4,7 @@ const {
   updateUser,
   userAll,
   deleteUser,
+  getlastusercode,
 } = require("../controllers/loginController");
 const {
   addtypeproduct,
@@ -86,7 +87,8 @@ const {
   Wh_posAllrdate,
   refno,
   searchWh_posRunno,
-  Wh_posByRefno
+  Wh_posByRefno,
+  countWh_pos
 } = require("../controllers/wh_posController")
 
 const {
@@ -110,8 +112,9 @@ router.get("/testApi", (req, res) => {
 router.post("/login", login);
 router.post("/addUser", addUser);
 router.post("/updateUser", updateUser);
-router.get("/userAll", userAll);
+router.post("/userAll", userAll);
 router.post("/deleteUser", deleteUser);
+router.post("/getlastusercode", getlastusercode);
 
 // type_product
 router.post("/addTypeproduct", addtypeproduct);
@@ -194,6 +197,7 @@ router.post("/wh_posAlljoindt", Wh_posAlljoindt);
 router.post("/Wh_posAllrdate", Wh_posAllrdate);
 router.post("/refno", refno);
 router.post("/wh_posbyrefno", Wh_posByRefno);
+router.post("/countwh_pos", countWh_pos);
 
 router.post("/addWh_posdt", addWh_posdt);
 router.post("/updatewh_posdt", updateWh_posdt);

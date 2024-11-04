@@ -25,6 +25,8 @@ exports.addWh_pos = async (req, res) => {
       monthh: headerData.monthh,
       myear: headerData.myear,
       user_code: headerData.user_code,
+      taxable: headerData.taxable,
+      nontaxable: headerData.nontaxable,
       total: footerData.total
     })
       .then(() => {
@@ -50,6 +52,8 @@ exports.updateWh_pos = async (req, res) => {
         monthh: req.body.monthh, //10
         supplier_code: req.body.supplier_code,
         branch_code: req.body.branch_code,
+        taxable: headerData.taxable,
+        nontaxable: headerData.nontaxable,
         total: req.body.total,
         user_code: req.body.user_code
       },
@@ -176,18 +180,16 @@ exports.Wh_posByRefno = async (req, res) => {
 
 exports.countWh_pos = async (req, res) => {
   try {
-    const { Op } = require("sequelize");
-    const amount = await wh_posModel.count({
-      where: {
-        refno: {
-          [Op.gt]: 0,
-        },
-      },
+    // นับจำนวนรายการทั้งหมด
+    const amount = await wh_posModel.count();
+
+    res.status(200).send({
+      result: true,
+      data: amount
     });
-    res.status(200).send({ result: true, data: amount })
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log(error);
+    res.status(500).send({ message: error });
   }
 };
 

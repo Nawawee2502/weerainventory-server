@@ -3,7 +3,7 @@ module.exports = (sequelize, DataTypes) => {
     "user",
     {
       user_code: {
-        type: DataTypes.STRING(100),
+        type: DataTypes.STRING(10),
       },
       username: {
         type: DataTypes.STRING(100),
@@ -11,15 +11,15 @@ module.exports = (sequelize, DataTypes) => {
       password: {
         type: DataTypes.STRING(100),
       },
-      // typeuser_code: {
-      //   type: DataTypes.STRING(50),
-      // },
-      // email: {
-      //   type: DataTypes.STRING(50),
-      // },
-      // line_id: {
-      //   type: DataTypes.STRING(50),
-      // }
+      typeuser_code: {
+        type: DataTypes.STRING(10),
+      },
+      email: {
+        type: DataTypes.STRING(50),
+      },
+      line_uid: {
+        type: DataTypes.STRING(100),
+      }
 
     },
     {
