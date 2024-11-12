@@ -4,7 +4,6 @@ const {
   updateUser,
   userAll,
   deleteUser,
-  getlastusercode,
 } = require("../controllers/loginController");
 const {
   addtypeproduct,
@@ -34,6 +33,7 @@ const {
   productcode,
   productAlltypeproduct,
   SearchProductCode,
+  searchproduct,
 } = require("../controllers/tbl_productController");
 const {
   addbranch,
@@ -112,9 +112,8 @@ router.get("/testApi", (req, res) => {
 router.post("/login", login);
 router.post("/addUser", addUser);
 router.post("/updateUser", updateUser);
-router.post("/userAll", userAll);
+router.get("/userAll", userAll);
 router.post("/deleteUser", deleteUser);
-router.post("/getlastusercode", getlastusercode);
 
 // type_product
 router.post("/addTypeproduct", addtypeproduct);
@@ -144,6 +143,7 @@ router.post("/searchproductname", searchProductName);
 router.post("/productcode", productcode);
 router.post("/productalltypeproduct", productAlltypeproduct);
 router.post("/SearchProductCode", SearchProductCode);
+router.post("/searchproduct", searchproduct);
 
 // branch
 router.post("/addbranch", addbranch);
@@ -198,6 +198,7 @@ router.post("/Wh_posAllrdate", Wh_posAllrdate);
 router.post("/refno", refno);
 router.post("/wh_posbyrefno", Wh_posByRefno);
 router.post("/countwh_pos", countWh_pos);
+
 
 router.post("/addWh_posdt", addWh_posdt);
 router.post("/updatewh_posdt", updateWh_posdt);

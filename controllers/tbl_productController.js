@@ -53,7 +53,6 @@ exports.addproduct = async (req, res) => {
       retail_unit_code: req.body.retail_unit_code,
       retail_unit_price: req.body.retail_unit_price,
       unit_conversion_factor: req.body.unit_conversion_factor,
-      tax1:req.body.tax1,
     })
     res.status(200).send({ result: true })
 
@@ -75,7 +74,7 @@ exports.updateproduct = async (req, res) => {
         retail_unit_price: req.body.retail_unit_price,
         unit_conversion_factor: req.body.unit_conversion_factor,
         typeproduct_code: req.body.typeproduct_code,
-        tax1:req.body.tax1,
+        tax1: req.body.tax1, // เพิ่มบรรทัดนี้
       },
       { where: { product_code: req.body.product_code } }
     );
@@ -84,7 +83,6 @@ exports.updateproduct = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-
 };
 
 
@@ -107,10 +105,10 @@ exports.productAll = async (req, res) => {
     const productShow = await tbl_productModel.findAll({ offset: offset, limit: limit });
     res.status(200).send({ result: true, data: productShow })
   } catch (error) {
-    console.log(error) 
-    res.status(500).send({ message: error }) 
-  } 
-}; 
+    console.log(error)
+    res.status(500).send({ message: error })
+  }
+};
 
 exports.productAlltypeproduct = async (req, res) => {
   try {
@@ -119,18 +117,18 @@ exports.productAlltypeproduct = async (req, res) => {
     const productShow = await tbl_productModel.findAll({
       offset: offset,  // กำหนด offset
       limit: limit,    // กำหนด limit
-      include: [    
+      include: [
         {
           model: tbl_TypeproductModel,
         },
         {
           model: tbl_unit,
           as: 'productUnit1',
-        }, 
+        },
         {
           model: tbl_unit,
           as: 'productUnit2',
-        }, 
+        },
       ],
     });
     res.status(200).send({ result: true, data: productShow })
@@ -178,7 +176,7 @@ exports.SearchProductCode = async (req, res) => {
 exports.productcode = async (req, res) => {
   try {
     const { Op } = require("sequelize");  // เพิ่มบรรทัดนี้
-    
+
     // ดึงข้อมูลทั้งหมดแล้วส่งไปให้ UI คำนวณ
     const allProducts = await tbl_productModel.findAll({
       attributes: ['product_code'],
@@ -190,13 +188,13 @@ exports.productcode = async (req, res) => {
       order: [['product_code', 'DESC']]
     });
 
-    res.status(200).send({ 
-      result: true, 
-      data: allProducts 
+    res.status(200).send({
+      result: true,
+      data: allProducts
     });
   } catch (error) {
     console.log(error);
-    res.status(500).send({ 
+    res.status(500).send({
       result: false,
       message: error.message || 'An error occurred while fetching product codes'
     });
@@ -271,5 +269,51 @@ exports.searchProductName = async (req, res) => {
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
+  }
+};
+
+exports.searchproduct = async (req, res) => {
+  try {
+    const { product_name, typeproduct_code } = req.body;
+    const { Op } = require("sequelize");
+    
+    // สร้าง where clause ตามเงื่อนไขที่ส่งมา
+    let whereClause = {};
+    
+    if (product_name) {
+      whereClause.product_name = {
+        [Op.like]: `%${product_name}%`
+      };
+    }
+    
+    if (typeproduct_code) {
+      whereClause.typeproduct_code = typeproduct_code;
+    }
+
+    const productShow = await tbl_productModel.findAll({
+      include: [
+        {
+          model: tbl_TypeproductModel,
+          required: true,
+        },
+        {
+          model: tbl_unit,
+          as: 'productUnit1',
+          required: true,
+        },
+        {
+          model: tbl_unit,
+          as: 'productUnit2',
+          required: true,
+        },
+      ],
+      where: whereClause,
+      order: [['product_code', 'ASC']] // เพิ่มการเรียงลำดับตาม product_code
+    });
+
+    res.status(200).send({ result: true, data: productShow });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({ message: error });
   }
 };

@@ -22,20 +22,25 @@ exports.addsupplier = async (req, res) => {
   
   exports.updatesupplier = async (req, res) => {
     try {
-        tbl_supplierModel.update(
-        { supplier_name: req.body.supplier_name },
-        { addr1: req.body.addr1 },
-        { addr2: req.body.addr2 },
-        { tel1: req.body.tel1 },
-        { where: { supplier_code: req.body.supplier_code } }
-      );
-      res.status(200).send({ result: true })
+        await tbl_supplierModel.update(
+            {   // ข้อมูลที่ต้องการอัพเดท
+                supplier_name: req.body.supplier_name,
+                addr1: req.body.addr1,
+                addr2: req.body.addr2,
+                tel1: req.body.tel1
+            },
+            {   // เงื่อนไขในการอัพเดท
+                where: { 
+                    supplier_code: req.body.supplier_code 
+                }
+            }
+        );
+        res.status(200).send({ result: true })
     } catch (error) {
-      console.log(error)
-      res.status(500).send({ message: error })
+        console.log(error)
+        res.status(500).send({ message: error })
     }
-  
-  };
+};
   
   
   exports.deletesupplier = async (req, res) => {
