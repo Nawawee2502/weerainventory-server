@@ -20,6 +20,15 @@ module.exports = (sequelize, DataTypes) => {
         branch_code: {
             type: DataTypes.STRING(10),
         },
+        refno1: {
+          type: DataTypes.STRING(20),
+        },
+        taxable: {
+          type: DataTypes.DOUBLE(12,2),
+        },
+        nontaxable: {
+          type: DataTypes.DOUBLE(12,2),
+        },
         total: {
             type: DataTypes.DOUBLE(12,2),
         },

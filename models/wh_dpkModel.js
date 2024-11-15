@@ -20,6 +20,12 @@ module.exports = (sequelize, DataTypes) => {
         kitchen_code: {
             type: DataTypes.STRING(10),
         },
+        taxable: {
+          type: DataTypes.DOUBLE(12,2),
+        },
+        nontaxable: {
+          type: DataTypes.DOUBLE(12,2),
+        },
         total: {
             type: DataTypes.DOUBLE(12,2),
         },

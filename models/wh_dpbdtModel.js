@@ -8,6 +8,18 @@ module.exports = (sequelize, DataTypes) => {
         product_code: {
           type: DataTypes.STRING(25),
         },
+        expire_date: {
+          type: DataTypes.STRING(25),
+        },
+        texpire_date: {
+          type: DataTypes.STRING(25),
+        },
+        tax1: {
+          type: DataTypes.STRING(10),
+        },
+        temperature1: {
+          type: DataTypes.DOUBLE(12,2),
+        },
         unit_code: {
           type: DataTypes.STRING(25),
         },

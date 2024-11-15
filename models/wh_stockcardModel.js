@@ -6,22 +6,22 @@ module.exports = (sequelize, DataTypes) => {
           type: DataTypes.STRING(20),
         },
         rdate: {
-          type: DataTypes.STRING(25),
+          type: DataTypes.STRING(10),
         },
         trdate: {
-            type: DataTypes.STRING(25),
+            type: DataTypes.STRING(10),
         },
         myear: {
-            type: DataTypes.STRING(25),
+            type: DataTypes.STRING(10),
         },
         monthh: {
             type: DataTypes.INTEGER,
         },
         product_code: {
             type: DataTypes.STRING(10),
-          },
-        retail_unit_code: {
-        type: DataTypes.STRING(10),
+        },
+        unit_code: {
+          type: DataTypes.STRING(10),
         },
         beg1: {
             type: DataTypes.DOUBLE(12,2),

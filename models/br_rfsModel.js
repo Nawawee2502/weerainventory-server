@@ -6,13 +6,13 @@ module.exports = (sequelize, DataTypes) => {
           type: DataTypes.STRING(20),
         },
         rdate: {
-          type: DataTypes.STRING(25),
+          type: DataTypes.STRING(10),
         },
         trdate: {
-            type: DataTypes.STRING(25),
+            type: DataTypes.STRING(10),
         },
         myear: {
-            type: DataTypes.STRING(25),
+            type: DataTypes.STRING(10),
         },
         monthh: {
             type: DataTypes.INTEGER,
@@ -22,6 +22,12 @@ module.exports = (sequelize, DataTypes) => {
         },
         supplier_code: {
             type: DataTypes.STRING(10),
+        },
+        taxable: {
+          type: DataTypes.DOUBLE(12,2),
+        },
+        nontaxable: {
+          type: DataTypes.DOUBLE(12,2),
         },
         total: {
             type: DataTypes.DOUBLE(12,2),
