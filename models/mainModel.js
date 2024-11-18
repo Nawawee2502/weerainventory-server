@@ -103,6 +103,29 @@ db.Wh_dpkdt = require("./wh_dpkdtModel")(sequelize, Sequelize)
 db.Wh_dpb = require("./wh_dpbModel")(sequelize, Sequelize)
 db.Wh_dpbdt = require("./wh_dpbdtModel")(sequelize, Sequelize)
 
+// // report wh_pos
+// db.Wh_pos.belongsTo(db.Tbl_user, {
+//   foreignKey: 'user_code',
+//   targetKey: 'user_code'
+// });
+
+// db.Tbl_user.hasMany(db.Wh_pos, {
+//   foreignKey: 'user_code',
+//   sourceKey: 'user_code'
+// });
+
+db.Wh_pos.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Wh_pos, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'wh_pos'
+});
+
 //inner join warehouse
 //stock card
 db.Wh_stockcard.belongsTo(db.Tbl_unit, {
@@ -175,6 +198,16 @@ db.Wh_posdt.belongsTo(db.Tbl_product, {
 db.Tbl_product.hasMany(db.Wh_posdt, {
   foreignKey: 'product_code',  // foreignKey ของ Type Product
   sourceKey: 'product_code', // sourceKey ของ Product
+});
+
+db.Wh_pos.hasMany(db.Wh_posdt, {
+  foreignKey: 'refno',
+  sourceKey: 'refno'
+});
+
+db.Wh_posdt.belongsTo(db.Wh_pos, {
+  foreignKey: 'refno',
+  targetKey: 'refno'
 });
 
 
@@ -461,7 +494,7 @@ db.Kt_pow.belongsTo(db.Tbl_kitchen, {
   foreignKey: 'kitchen_code',  // foreignKey ของ Type Product
   targetKey: 'kitchen_code', // sourceKey ของ Product
 });
-db.Tbl_kitchen.hasMany(db.Wh_pos, {
+db.Tbl_kitchen.hasMany(db.Kt_pow, {
   foreignKey: 'kitchen_code',  // foreignKey ของ Type Product
   sourceKey: 'kitchen_code', // sourceKey ของ Product
 });

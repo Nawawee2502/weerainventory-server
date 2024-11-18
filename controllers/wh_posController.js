@@ -3,8 +3,14 @@ const wh_posdtModel = require("../models/mainModel").Wh_posdt;
 const unitModel = require("../models/mainModel").Tbl_unit;
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const { Tbl_supplier, sequelize, Tbl_product } = require("../models/mainModel");
-const { Tbl_branch } = require("../models/mainModel");
+const db = require("../models/mainModel");
+const {
+  Tbl_supplier,
+  sequelize,
+  Tbl_product,
+  Tbl_branch,
+  User
+} = require("../models/mainModel");
 
 exports.addWh_pos = async (req, res) => {
   try {
@@ -124,19 +130,84 @@ exports.Wh_posAlljoindt = async (req, res) => {
   try {
     const { offset, limit } = req.body;
 
-    const wh_posShow = await wh_posModel.findAll({
-      offset: offset,  // กำหนด offset
-      limit: limit,    // กำหนด limit
+    // ดึงข้อมูลหลักก่อน
+    let wh_pos_headers = await wh_posModel.findAll({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'supplier_code', 'branch_code', 'taxable', 'nontaxable', 
+        'total', 'user_code', 'created_at'
+      ],
       include: [
         {
-          model: wh_posdtModel,
+          model: Tbl_supplier,
+          attributes: ['supplier_code', 'supplier_name'],
+          required: false
         },
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          required: false
+        },
+        {
+          model: db.User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
       ],
+      order: [['refno', 'ASC']],
+      offset: offset,
+      limit: limit
     });
-    res.status(200).send({ result: true, data: wh_posShow })
+
+    // ดึงข้อมูลรายละเอียดแยก
+    if (wh_pos_headers.length > 0) {
+      const refnos = wh_pos_headers.map(header => header.refno);
+      const details = await wh_posdtModel.findAll({
+        where: {
+          refno: refnos
+        },
+        include: [
+          {
+            model: Tbl_product,
+            attributes: ['product_code', 'product_name'],
+            required: false
+          },
+          {
+            model: unitModel,
+            attributes: ['unit_code', 'unit_name'],
+            required: false
+          }
+        ]
+      });
+
+      // จัดกลุ่มข้อมูลรายละเอียดตาม refno
+      const detailsByRefno = {};
+      details.forEach(detail => {
+        if (!detailsByRefno[detail.refno]) {
+          detailsByRefno[detail.refno] = [];
+        }
+        detailsByRefno[detail.refno].push(detail);
+      });
+
+      // รวมข้อมูลเข้าด้วยกัน
+      wh_pos_headers = wh_pos_headers.map(header => {
+        const headerData = header.toJSON();
+        headerData.wh_posdts = detailsByRefno[header.refno] || [];
+        return headerData;
+      });
+    }
+
+    console.log('Query Result:', JSON.stringify(wh_pos_headers, null, 2));
+
+    res.status(200).send({
+      result: true,
+      data: wh_pos_headers
+    });
+
   } catch (error) {
-    console.log(error);
-    res.status(500).send({ message: error });
+    console.log("Error in Wh_posAlljoindt:", error);
+    res.status(500).send({ message: error.message });
   }
 };
 
