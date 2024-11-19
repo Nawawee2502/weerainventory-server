@@ -90,7 +90,7 @@ exports.deleteWh_pos = async (req, res) => {
 exports.Wh_posAllrdate = async (req, res) => {
   try {
     const { offset, limit, rdate1, rdate2, supplier_name, branch_name } = req.body;
-    const { Op } = require("sequelize");
+    const { Op, where } = require("sequelize");
 
     const wheresupplier = { supplier_name: { [Op.like]: '%', } };
     if (supplier_name)
@@ -129,12 +129,33 @@ exports.Wh_posAllrdate = async (req, res) => {
 exports.Wh_posAlljoindt = async (req, res) => {
   try {
     const { offset, limit } = req.body;
+    const { rdate1, rdate2 } = req.body;
+    const { supplier_code, branch_code, product_code } = req.body;
+    const { Op } = require("sequelize");
+
+    // สร้าง where clause สำหรับ header
+    let whereClause = {};
+
+    // ถ้ามี rdate1 และ rdate2 ถึงจะเพิ่มเงื่อนไข between
+    if (rdate1 && rdate2) {
+      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    }
+
+    // ถ้ามีการเลือก supplier_code ถึงจะเพิ่มเงื่อนไข
+    if (supplier_code && supplier_code !== '') {
+      whereClause.supplier_code = supplier_code;
+    }
+
+    // ถ้ามีการเลือก branch_code ถึงจะเพิ่มเงื่อนไข
+    if (branch_code && branch_code !== '') {
+      whereClause.branch_code = branch_code;
+    }
 
     // ดึงข้อมูลหลักก่อน
     let wh_pos_headers = await wh_posModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
-        'supplier_code', 'branch_code', 'taxable', 'nontaxable', 
+        'supplier_code', 'branch_code', 'taxable', 'nontaxable',
         'total', 'user_code', 'created_at'
       ],
       include: [
@@ -155,6 +176,7 @@ exports.Wh_posAlljoindt = async (req, res) => {
           required: false
         }
       ],
+      where: whereClause,
       order: [['refno', 'ASC']],
       offset: offset,
       limit: limit
@@ -163,15 +185,31 @@ exports.Wh_posAlljoindt = async (req, res) => {
     // ดึงข้อมูลรายละเอียดแยก
     if (wh_pos_headers.length > 0) {
       const refnos = wh_pos_headers.map(header => header.refno);
-      const details = await wh_posdtModel.findAll({
-        where: {
+
+      // สร้าง where clause สำหรับ details
+      let whereDetailClause = {
+        refno: refnos
+      };
+
+      // ถ้ามีการเลือก product_code ถึงจะเพิ่มเงื่อนไข
+      if (product_code && product_code !== '') {
+        whereDetailClause = {
+          refno: refnos,
+          '$tbl_product.product_name$': { [Op.like]: `%${product_code}%` }  // เปลี่ยนเป็นค้นหาจาก product_name แทน
+        };
+      } else {
+        whereDetailClause = {
           refno: refnos
-        },
+        };
+      }
+
+      const details = await wh_posdtModel.findAll({
+        where: whereDetailClause,
         include: [
           {
             model: Tbl_product,
             attributes: ['product_code', 'product_name'],
-            required: false
+            required: true  // เปลี่ยนเป็น true เพื่อให้ join แบบ inner
           },
           {
             model: unitModel,
