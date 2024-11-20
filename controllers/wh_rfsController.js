@@ -1,10 +1,3 @@
-// const wh_rfsModel = require("../models/mainModel").Wh_rfs;
-// const wh_rfsdtModel = require("../models/mainModel").Wh_rfsdt;
-// const unitModel = require("../models/mainModel").Tbl_unit;
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
-// const { Tbl_supplier, sequelize, Tbl_product } = require("../models/mainModel");
-// const { Tbl_branch } = require("../models/mainModel");
 const {
   Tbl_supplier,
   sequelize,
@@ -18,15 +11,12 @@ const {
 
 exports.addWh_rfs = async (req, res) => {
   try {
-    // console.log("req",req)
     const headerData = req.body.headerData;
-    // console.log("req.body", req.body)
     console.log("headerData", headerData)
     const productArrayData = req.body.productArrayData;
     const footerData = req.body.footerData;
-    // console.log("footerData", footerData)
 
-    wh_rfsModel.create({
+    Wh_rfs.create({
       refno: headerData.refno,
       rdate: headerData.rdate,
       supplier_code: headerData.supplier_code,
@@ -46,24 +36,23 @@ exports.addWh_rfs = async (req, res) => {
       .then(() => {
         console.log("THEN")
         console.log(productArrayData)
-        wh_rfsdtModel.bulkCreate(productArrayData)
+        Wh_rfsdt.bulkCreate(productArrayData)
       })
     res.status(200).send({ result: true })
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
   }
-
 };
 
 exports.updateWh_rfs = async (req, res) => {
   try {
-    wh_rfsModel.update(
+    Wh_rfs.update(
       {
-        rdate: req.body.rdate, //19/10/2024
-        trdate: req.body.trdate, //20241019
-        myear: req.body.myear, // 2024
-        monthh: req.body.monthh, //10
+        rdate: req.body.rdate,
+        trdate: req.body.trdate,
+        myear: req.body.myear,
+        monthh: req.body.monthh,
         supplier_code: req.body.supplier_code,
         branch_code: req.body.branch_code,
         taxable: req.body.taxable,
@@ -82,13 +71,11 @@ exports.updateWh_rfs = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-
 };
-
 
 exports.deleteWh_rfs = async (req, res) => {
   try {
-    wh_rfsModel.destroy(
+    Wh_rfs.destroy(
       { where: { refno: req.body.refno } }
     );
     res.status(200).send({ result: true })
@@ -96,7 +83,6 @@ exports.deleteWh_rfs = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-
 };
 
 exports.Wh_rfsAllrdate = async (req, res) => {
@@ -112,19 +98,17 @@ exports.Wh_rfsAllrdate = async (req, res) => {
     if (branch_name)
       wherebranch = { $like: '%' + branch_name + '%' };
 
-    const wh_rfsShow = await wh_rfsModel.findAll({
+    const wh_rfsShow = await Wh_rfs.findAll({
       include: [
         {
           model: Tbl_supplier,
           attributes: ['supplier_code', 'supplier_name'],
-          // where: { supplier_name: {[Op.like]: '%'+(supplier_name)+'%',}},
           where: wheresupplier,
           required: true,
         },
         {
           model: Tbl_branch,
           attributes: ['branch_code', 'branch_name'],
-          // where: { branch_name: {[Op.like]: '%'+(branch_name)+'%',}},
           where: wherebranch,
           required: true,
         },
@@ -138,7 +122,6 @@ exports.Wh_rfsAllrdate = async (req, res) => {
   }
 };
 
-// Update the model references throughout the file
 exports.Wh_rfsAlljoindt = async (req, res) => {
   try {
     const { offset, limit } = req.body;
@@ -146,26 +129,21 @@ exports.Wh_rfsAlljoindt = async (req, res) => {
     const { supplier_code, branch_code, product_code } = req.body;
     const { Op } = require("sequelize");
 
-    // สร้าง where clause สำหรับ header
     let whereClause = {};
 
-    // ถ้ามี rdate1 และ rdate2 ถึงจะเพิ่มเงื่อนไข between
     if (rdate1 && rdate2) {
       whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
     }
 
-    // ถ้ามีการเลือก supplier_code ถึงจะเพิ่มเงื่อนไข
     if (supplier_code && supplier_code !== '') {
       whereClause.supplier_code = supplier_code;
     }
 
-    // ถ้ามีการเลือก branch_code ถึงจะเพิ่มเงื่อนไข
     if (branch_code && branch_code !== '') {
       whereClause.branch_code = branch_code;
     }
 
-    // ดึงข้อมูลหลักก่อน
-    let wh_rfs_headers = await Wh_rfs.findAll({  // Changed from wh_rfsModel to Wh_rfs
+    let wh_rfs_headers = await Wh_rfs.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'supplier_code', 'branch_code', 'taxable', 'nontaxable',
@@ -196,16 +174,13 @@ exports.Wh_rfsAlljoindt = async (req, res) => {
       limit: limit
     });
 
-    // ดึงข้อมูลรายละเอียดแยก
     if (wh_rfs_headers.length > 0) {
       const refnos = wh_rfs_headers.map(header => header.refno);
 
-      // สร้าง where clause สำหรับ details
       let whereDetailClause = {
         refno: refnos
       };
 
-      // ถ้ามีการเลือก product_code ถึงจะเพิ่มเงื่อนไข
       if (product_code && product_code !== '') {
         whereDetailClause = {
           refno: refnos,
@@ -213,7 +188,7 @@ exports.Wh_rfsAlljoindt = async (req, res) => {
         };
       }
 
-      const details = await Wh_rfsdt.findAll({  // Changed from wh_rfsdtModel to Wh_rfsdt
+      const details = await Wh_rfsdt.findAll({
         where: whereDetailClause,
         include: [
           {
@@ -229,7 +204,6 @@ exports.Wh_rfsAlljoindt = async (req, res) => {
         ]
       });
 
-      // จัดกลุ่มข้อมูลรายละเอียดตาม refno
       const detailsByRefno = {};
       details.forEach(detail => {
         if (!detailsByRefno[detail.refno]) {
@@ -238,7 +212,6 @@ exports.Wh_rfsAlljoindt = async (req, res) => {
         detailsByRefno[detail.refno].push(detail);
       });
 
-      // รวมข้อมูลเข้าด้วยกัน
       wh_rfs_headers = wh_rfs_headers.map(header => {
         const headerData = header.toJSON();
         headerData.wh_rfsdts = detailsByRefno[header.refno] || [];
@@ -257,36 +230,32 @@ exports.Wh_rfsAlljoindt = async (req, res) => {
   }
 };
 
-// *********************แก้ไขใหม่********************* 
 exports.Wh_rfsByRefno = async (req, res) => {
   try {
     const { refno } = req.body;
 
-    const wh_rfsShow = await wh_rfsModel.findOne({
+    const wh_rfsShow = await Wh_rfs.findOne({
       include: [
         {
-          model: wh_rfsdtModel,
+          model: Wh_rfsdt,
           include: [{
             model: Tbl_product,
             include: [
               {
-                model: unitModel,
+                model: Tbl_unit,
                 as: 'productUnit1',
                 required: true,
               },
               {
-                model: unitModel,
+                model: Tbl_unit,
                 as: 'productUnit2',
                 required: true,
               },
             ],
           }],
-          // as: "postoposdt",
-          // required: true,
         },
       ],
       where: { refno: refno }
-      // offset:offset,limit:limit 
     });
     res.status(200).send({ result: true, data: wh_rfsShow })
   } catch (error) {
@@ -298,7 +267,7 @@ exports.Wh_rfsByRefno = async (req, res) => {
 exports.countWh_rfs = async (req, res) => {
   try {
     const { Op } = require("sequelize");
-    const amount = await wh_rfsModel.count({
+    const amount = await Wh_rfs.count({
       where: {
         refno: {
           [Op.gt]: 0,
@@ -314,12 +283,10 @@ exports.countWh_rfs = async (req, res) => {
 
 exports.searchWh_rfsrefno = async (req, res) => {
   try {
-    // console.log( req.body.type_productname);
     const { Op } = require("sequelize");
-    const { refno } = await req.body;
-    // console.log((typeproduct_name));
+    const { refno } = req.body;
 
-    const Wh_rfsShow = await wh_rfsModel.findAll({
+    const Wh_rfsShow = await Wh_rfs.findAll({
       where: {
         refno: {
           [Op.like]: `%${refno}%`
@@ -336,7 +303,7 @@ exports.searchWh_rfsrefno = async (req, res) => {
 
 exports.Wh_rfsrefno = async (req, res) => {
   try {
-    const refno = await wh_rfsModel.findOne({
+    const refno = await Wh_rfs.findOne({
       order: [['refno', 'DESC']],
     });
     res.status(200).send({ result: true, data: refno })
@@ -344,11 +311,11 @@ exports.Wh_rfsrefno = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-}
+};
 
 exports.searchWh_rfsRunno = async (req, res) => {
   try {
-    const Wh_rfsShow = await wh_rfsModel.findAll({
+    const Wh_rfsShow = await Wh_rfs.findAll({
       where: {
         myear: req.body.myear,
         monthh: req.body.monthh
