@@ -1,10 +1,20 @@
-const wh_rfsModel = require("../models/mainModel").Wh_rfs;
-const wh_rfsdtModel = require("../models/mainModel").Wh_rfsdt;
-const unitModel = require("../models/mainModel").Tbl_unit;
+// const wh_rfsModel = require("../models/mainModel").Wh_rfs;
+// const wh_rfsdtModel = require("../models/mainModel").Wh_rfsdt;
+// const unitModel = require("../models/mainModel").Tbl_unit;
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const { Tbl_supplier, sequelize, Tbl_product } = require("../models/mainModel");
-const { Tbl_branch } = require("../models/mainModel");
+// const { Tbl_supplier, sequelize, Tbl_product } = require("../models/mainModel");
+// const { Tbl_branch } = require("../models/mainModel");
+const {
+  Tbl_supplier,
+  sequelize,
+  Tbl_product,
+  Tbl_branch,
+  User,
+  Wh_rfs,
+  Wh_rfsdt,
+  Tbl_unit
+} = require("../models/mainModel");
 
 exports.addWh_rfs = async (req, res) => {
   try {
@@ -128,25 +138,122 @@ exports.Wh_rfsAllrdate = async (req, res) => {
   }
 };
 
+// Update the model references throughout the file
 exports.Wh_rfsAlljoindt = async (req, res) => {
   try {
-    // const { offset, limit } = req.body;
+    const { offset, limit } = req.body;
+    const { rdate1, rdate2 } = req.body;
+    const { supplier_code, branch_code, product_code } = req.body;
+    const { Op } = require("sequelize");
 
-    const wh_rfsShow = await wh_rfsModel.findAll({
+    // สร้าง where clause สำหรับ header
+    let whereClause = {};
+
+    // ถ้ามี rdate1 และ rdate2 ถึงจะเพิ่มเงื่อนไข between
+    if (rdate1 && rdate2) {
+      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    }
+
+    // ถ้ามีการเลือก supplier_code ถึงจะเพิ่มเงื่อนไข
+    if (supplier_code && supplier_code !== '') {
+      whereClause.supplier_code = supplier_code;
+    }
+
+    // ถ้ามีการเลือก branch_code ถึงจะเพิ่มเงื่อนไข
+    if (branch_code && branch_code !== '') {
+      whereClause.branch_code = branch_code;
+    }
+
+    // ดึงข้อมูลหลักก่อน
+    let wh_rfs_headers = await Wh_rfs.findAll({  // Changed from wh_rfsModel to Wh_rfs
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'supplier_code', 'branch_code', 'taxable', 'nontaxable',
+        'total', 'instant_saving', 'delivery_surcharge',
+        'sale_tax', 'total_due', 'user_code', 'created_at'
+      ],
       include: [
         {
-          model: wh_rfsdtModel,
-          // as: "postoposdt",
-          // required: true,
+          model: Tbl_supplier,
+          attributes: ['supplier_code', 'supplier_name'],
+          required: false
         },
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
       ],
-      // where: { refno: 'WPOS2410013' }
-      // offset:offset,limit:limit 
+      where: whereClause,
+      order: [['refno', 'ASC']],
+      offset: offset,
+      limit: limit
     });
-    res.status(200).send({ result: true, data: wh_rfsShow })
+
+    // ดึงข้อมูลรายละเอียดแยก
+    if (wh_rfs_headers.length > 0) {
+      const refnos = wh_rfs_headers.map(header => header.refno);
+
+      // สร้าง where clause สำหรับ details
+      let whereDetailClause = {
+        refno: refnos
+      };
+
+      // ถ้ามีการเลือก product_code ถึงจะเพิ่มเงื่อนไข
+      if (product_code && product_code !== '') {
+        whereDetailClause = {
+          refno: refnos,
+          '$tbl_product.product_name$': { [Op.like]: `%${product_code}%` }
+        };
+      }
+
+      const details = await Wh_rfsdt.findAll({  // Changed from wh_rfsdtModel to Wh_rfsdt
+        where: whereDetailClause,
+        include: [
+          {
+            model: Tbl_product,
+            attributes: ['product_code', 'product_name'],
+            required: true
+          },
+          {
+            model: Tbl_unit,
+            attributes: ['unit_code', 'unit_name'],
+            required: false
+          }
+        ]
+      });
+
+      // จัดกลุ่มข้อมูลรายละเอียดตาม refno
+      const detailsByRefno = {};
+      details.forEach(detail => {
+        if (!detailsByRefno[detail.refno]) {
+          detailsByRefno[detail.refno] = [];
+        }
+        detailsByRefno[detail.refno].push(detail);
+      });
+
+      // รวมข้อมูลเข้าด้วยกัน
+      wh_rfs_headers = wh_rfs_headers.map(header => {
+        const headerData = header.toJSON();
+        headerData.wh_rfsdts = detailsByRefno[header.refno] || [];
+        return headerData;
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: wh_rfs_headers
+    });
+
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log("Error in Wh_rfsAlljoindt:", error);
+    res.status(500).send({ message: error.message });
   }
 };
 

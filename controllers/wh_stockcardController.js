@@ -1,4 +1,5 @@
 const Wh_stockcardModel = require("../models/mainModel").Wh_stockcard;
+const { Tbl_product,Tbl_unit} = require("../models/mainModel")
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
@@ -74,22 +75,35 @@ exports.addWh_stockcard = async (req, res) => {
   
   };
   
-  exports.Wh_stockcardAll = async (req, res) => {
+  exports.Query_Wh_stockcard = async (req, res) => {
     try {
       const {offset,limit} = req.body;
-       const Wh_stockcardShow = await Wh_stockcardModel.findAll({offset:offset,limit:limit});
-      // const Wh_stockcardShow = await wh_dpkModel.findAll({
-      //   include: [
-      //     {
-      //       model: Tbl_kitchen,
-      //       attributes: ['kitchen_code', 'kitchen_name'],
-      //       // where: { supplier_name: {[Op.like]: '%'+(supplier_name)+'%',}},
-      //       where: wherekitchen,
-      //       required: true,
-      //     },
-      //    ],
-      //   where: { trdate: { [Op.between]: [rdate1, rdate2] } },
-      // });
+      const {myear,monthh,product_code} = req.body;
+
+
+       const Wh_stockcardShow = await Wh_stockcardModel.findAll({
+        where: {
+          myear: myear,
+          monthh: monthh,
+          product_code: product_code
+        },
+        include: [
+          {
+            model: Tbl_product,
+            attributes: ['product_code', 'product_name'],
+            required: false
+          },
+          {
+            model: Tbl_unit,
+            attributes: ['unit_code', 'unit_name'],
+            required: false
+          }
+        ],
+        order: [['refno', 'ASC']],
+        offset: offset,
+        limit: limit
+      });
+
       res.status(200).send({ result: true, data: Wh_stockcardShow })
     } catch (error) {
       console.log(error)

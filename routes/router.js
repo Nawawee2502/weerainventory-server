@@ -205,7 +205,7 @@ const {
   updateWh_stockcard,
   deleteWh_stockcard,
   countWh_stockcard,
-  Wh_stockcardAll,
+  Query_Wh_stockcard,
 } = require("../controllers/wh_stockcardController")
 
 
@@ -383,7 +383,7 @@ const {
   addBr_minnum_stock,
   updateBr_minnum_stock,
   deleteBr_minnum_stock,
-  Br_minnum_stockAll,
+  Query_Br_minnum_stock,
   Br_minnum_stockAlltypeproduct,
   countBr_minnum_stock,
 } = require("../controllers/br_minnum_stockContrller")
@@ -707,7 +707,7 @@ router.post("/addWh_stockcard", addWh_stockcard);
 router.post("/updatewh_stockcard", updateWh_stockcard);
 router.post("/deletewh_stockcard", deleteWh_stockcard);
 router.post("/countWh_stockcard", countWh_stockcard);
-router.post("/Wh_stockcardAll", Wh_stockcardAll)
+router.post("/Query_Wh_stockcard", Query_Wh_stockcard)
 
 //ครัวกลาง
 //ใบนับสต็อก
@@ -848,7 +848,7 @@ router.post("/Kt_stockcardAll", Kt_stockcardAll)
 router.post("/addBr_minnum_stock", addBr_minnum_stock);
 router.post("/updateBr_minnum_stock", updateBr_minnum_stock);
 router.post("/deleteBr_minnum_stock", deleteBr_minnum_stock);
-router.post("/Br_minnum_stockAll", Br_minnum_stockAll);
+router.post("/Query_Br_minnum_stock", Query_Br_minnum_stock);
 router.post("/Br_minnum_stockAlltypeproduct", Br_minnum_stockAlltypeproduct);
 router.post("/countBr_minnum_stock", countBr_minnum_stock);
 

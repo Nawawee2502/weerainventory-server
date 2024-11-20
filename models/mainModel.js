@@ -214,6 +214,19 @@ db.Wh_posdt.belongsTo(db.Wh_pos, {
 //inner join warehouse
 // ใบรับสินค้าจาก Supplier
 
+// Report
+db.Wh_rfs.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Wh_rfs, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'wh_rfs'
+});
+
 // *********************แก้ไขใหม่*********************
 db.Wh_rfs.hasMany(db.Wh_rfsdt, {
   foreignKey: 'refno',  // foreignKey ของ Type Product

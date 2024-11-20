@@ -1,12 +1,12 @@
-const tbl_productModel = require("../models/mainModel").Tbl_product;
+const Tbl_product = require("../models/mainModel").Tbl_product;
 const Br_minnum_stockModel = require("../models/mainModel").Br_minnum_stock;
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const multer = require("multer")
 const fs = require("fs")
 const formidable = require('formidable');
-const { Tbl_branchModel } = require("../models/mainModel");
-const tbl_unitModel = require("../models/mainModel").Tbl_unit;
+const { Tbl_branchModel} = require("../models/mainModel");
+const tbl_unit = require("../models/mainModel").Tbl_unit;
 
 
 
@@ -59,10 +59,28 @@ exports.deleteBr_minnum_stock = async (req, res) => {
 
 };
 
-exports.Br_minnum_stockAll = async (req, res) => {
+exports.Query_Br_minnum_stock = async (req, res) => {
   try {
-    const { offset, limit } = req.body;
-    const Br_minnum_stockModelShow = await Br_minnum_stockModel.findAll({ offset: offset, limit: limit });
+    const { offset, limit,branch_code } = req.body;
+    const Br_minnum_stockModelShow = await Br_minnum_stockModel.findAll({ 
+      where: {
+        branch_code: branch_code
+      },
+      include: [
+        {
+          model: Tbl_product,
+          attributes: ['product_code', 'product_name'],
+          required: false
+        },
+        {
+          model: tbl_unit,
+          attributes: ['unit_code', 'unit_name'],
+          required: false
+        }
+      ],
+      order: [['product_code', 'ASC']],
+      offset: offset, limit: limit 
+    });
     res.status(200).send({ result: true, data: Br_minnum_stockModelShow })
   } catch (error) {
     console.log(error)
