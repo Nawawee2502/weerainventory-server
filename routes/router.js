@@ -108,7 +108,8 @@ const {
   Wh_rfsAllrdate,
   Wh_rfsrefno,
   searchWh_rfsRunno,
-  Wh_rfsByRefno
+  Wh_rfsByRefno,
+  countWh_rfs
 } = require("../controllers/wh_rfsController")
 
 const {
@@ -631,7 +632,8 @@ router.post("/wh_rfsAlljoindt", Wh_rfsAlljoindt);
 router.post("/Wh_rfsAllrdate", Wh_rfsAllrdate);
 router.post("/Wh_rfsrefno", Wh_rfsrefno);
 router.post("/wh_rfsbyrefno", Wh_rfsByRefno);
-router.post("/searchWh_rfsRunno", searchWh_rfsRunno)
+router.post("/searchWh_rfsRunno", searchWh_rfsRunno);
+router.post("/countWh_rfs", countWh_rfs);
 
 router.post("/addWh_rfsdt", addWh_rfsdt);
 router.post("/updatewh_rfsdt", updateWh_rfsdt);
