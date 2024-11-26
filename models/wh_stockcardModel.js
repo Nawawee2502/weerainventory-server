@@ -24,7 +24,7 @@ module.exports = (sequelize, DataTypes) => {
         unit_code: {
           type: DataTypes.STRING(10),
         },
-        // ยอดยกมา ( qty )
+        // ยอดยกมา ( qty ) rfs = 0
         beg1: {
             type: DataTypes.DOUBLE(12,2),
         },
@@ -32,19 +32,19 @@ module.exports = (sequelize, DataTypes) => {
         in1: {
             type: DataTypes.DOUBLE(12,2),
         },
-        // ใบสำคัญจ่าย ( จำนวนสินค้า qty เช็คหน่วยนับ ถ้าเป็นหน่วยใหญ่ แปลเป็นหน่วยเล็ก )
+        // ใบสำคัญจ่าย ( จำนวนสินค้า qty เช็คหน่วยนับ ถ้าเป็นหน่วยใหญ่ แปลเป็นหน่วยเล็ก ) rfs = 0
         out1: {
             type: DataTypes.DOUBLE(12,2),
         },
-        // ใบเช็ค stock ( qty ของหน่วยเล็ก กำหนดเป็นหน่วยเล็กเท่านั้น )
+        // ใบเช็ค stock ( qty ของหน่วยเล็ก กำหนดเป็นหน่วยเล็กเท่านั้น ) rfs = 0
         upd1: {
             type: DataTypes.DOUBLE(12,2),
         },
-        // ราคาต่อหน่วย ของหน่วยเล็ก
+        // ราคาต่อหน่วย ของหน่วยเล็ก ถ้าเป็นหน่วยใหญ่เอา conversion มาหาร
         uprice: {
             type: DataTypes.DOUBLE(12,2),
         },
-        // จำนวนเงินของยอดยกมา (หน่วยเล็ก)
+        // จำนวนเงินของยอดยกมา (หน่วยเล็ก) rfs = 0
         beg1_amt: {
             type: DataTypes.DOUBLE(12,2),
         },
@@ -52,11 +52,11 @@ module.exports = (sequelize, DataTypes) => {
         in1_amt: {
             type: DataTypes.DOUBLE(12,2),
         },
-        // ใบสำคัญจ่าย (หน่วยเล็ก)
+        // ใบสำคัญจ่าย (หน่วยเล็ก) rfs = 0
         out1_amt: {
             type: DataTypes.DOUBLE(12,2),
         },
-        // ใบเช็ค stock (หน่วยเล็ก)
+        // ใบเช็ค stock (หน่วยเล็ก) rfs = 0
         upd1_amt: {
             type: DataTypes.DOUBLE(12,2),
         },

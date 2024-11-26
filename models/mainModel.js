@@ -90,6 +90,7 @@ db.Tbl_unit.hasMany(db.Tbl_product, {
 
 // Warehouse
 db.Wh_stockcard = require("./wh_stockcardModel")(sequelize, Sequelize)
+db.Wh_product_lotno = require("./wh_product_lotnoModel")(sequelize, Sequelize)
 db.Wh_pos = require("./wh_posModel")(sequelize, Sequelize)
 db.Wh_posdt = require("./wh_posdtModel")(sequelize, Sequelize)
 db.Wh_saf = require("./wh_safModel")(sequelize, Sequelize)
@@ -145,6 +146,26 @@ db.Tbl_product.hasMany(db.Wh_stockcard, {
   foreignKey: 'product_code',  // foreignKey ของ Type Product
   sourceKey: 'product_code', // sourceKey ของ Product
 });
+
+//product_lotno
+db.Wh_product_lotno.belongsTo(db.Tbl_unit, {
+  foreignKey: 'unit_code',  // foreignKey ของ Type Product
+  targetKey: 'unit_code', // sourceKey ของ Product
+});
+db.Tbl_unit.hasMany(db.Wh_product_lotno, {
+  foreignKey: 'unit_code',  // foreignKey ของ Type Product
+  sourceKey: 'unit_code', // sourceKey ของ Product
+});
+
+db.Wh_product_lotno.belongsTo(db.Tbl_product, {
+  foreignKey: 'product_code',  // foreignKey ของ Type Product
+  targetKey: 'product_code', // sourceKey ของ Product
+});
+db.Tbl_product.hasMany(db.Wh_product_lotno, {
+  foreignKey: 'product_code',  // foreignKey ของ Type Product
+  sourceKey: 'product_code', // sourceKey ของ Product
+});
+
 
 
 // ใบสั่งสินค้าให้ Supplier

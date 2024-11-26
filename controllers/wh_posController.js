@@ -52,25 +52,24 @@ exports.updateWh_pos = async (req, res) => {
   try {
     wh_posModel.update(
       {
-        rdate: req.body.rdate, //19/10/2024
-        trdate: req.body.trdate, //20241019
-        myear: req.body.myear, // 2024
-        monthh: req.body.monthh, //10
+        rdate: req.body.rdate,
+        trdate: req.body.trdate,
+        myear: req.body.myear,
+        monthh: req.body.monthh,
         supplier_code: req.body.supplier_code,
         branch_code: req.body.branch_code,
-        taxable: headerData.taxable,
-        nontaxable: headerData.nontaxable,
+        taxable: req.body.taxable,
+        nontaxable: req.body.nontaxable,
         total: req.body.total,
         user_code: req.body.user_code
       },
       { where: { refno: req.body.refno } }
     );
-    res.status(200).send({ result: true })
+    res.status(200).send({ result: true });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log(error);
+    res.status(500).send({ message: error });
   }
-
 };
 
 
@@ -329,6 +328,7 @@ exports.refno = async (req, res) => {
     const refno = await wh_posModel.findOne({
       order: [['refno', 'DESC']],
     });
+    console.log("lastrefno", refno);
     res.status(200).send({ result: true, data: refno })
   } catch (error) {
     console.log(error)

@@ -6,42 +6,98 @@ const {
   User,
   Wh_rfs,
   Wh_rfsdt,
-  Tbl_unit
+  Tbl_unit,
+  Wh_stockcard
 } = require("../models/mainModel");
+
 
 exports.addWh_rfs = async (req, res) => {
   try {
     const headerData = req.body.headerData;
-    console.log("headerData", headerData)
     const productArrayData = req.body.productArrayData;
     const footerData = req.body.footerData;
 
-    Wh_rfs.create({
-      refno: headerData.refno,
-      rdate: headerData.rdate,
-      supplier_code: headerData.supplier_code,
-      branch_code: headerData.branch_code,
-      trdate: headerData.trdate,
-      monthh: headerData.monthh,
-      myear: headerData.myear,
-      user_code: headerData.user_code,
-      taxable: footerData.taxable,
-      nontaxable: footerData.nontaxable,
-      total: footerData.total,
-      instant_saving: footerData.instant_saving,
-      delivery_surcharge: footerData.delivery_surcharge,
-      sale_tax: footerData.sale_tax,
-      total_due: footerData.total_due,
-    })
-      .then(() => {
-        console.log("THEN")
-        console.log(productArrayData)
-        Wh_rfsdt.bulkCreate(productArrayData)
-      })
-    res.status(200).send({ result: true })
+    const t = await sequelize.transaction();
+
+    try {
+      // Create WH_RFS record
+      await Wh_rfs.create({
+        refno: headerData.refno,
+        rdate: headerData.rdate,
+        supplier_code: headerData.supplier_code,
+        branch_code: headerData.branch_code,
+        trdate: headerData.trdate,
+        monthh: headerData.monthh,
+        myear: headerData.myear,
+        user_code: headerData.user_code,
+        taxable: footerData.taxable,
+        nontaxable: footerData.nontaxable,
+        total: footerData.total,
+        instant_saving: footerData.instant_saving,
+        delivery_surcharge: footerData.delivery_surcharge,
+        sale_tax: footerData.sale_tax,
+        total_due: footerData.total_due,
+      }, { transaction: t });
+
+      // Create WH_RFSDT records
+      await Wh_rfsdt.bulkCreate(productArrayData, { transaction: t });
+
+      // Get all products with conversion factors
+      const productCodes = productArrayData.map(p => p.product_code);
+      const products = await Tbl_product.findAll({
+        where: { product_code: productCodes },
+        attributes: ['product_code', 'unit_conversion_factor', 'bulk_unit_code', 'retail_unit_code'],
+        transaction: t
+      });
+
+      // Create stock card records
+      const stockcardRecords = productArrayData.map(product => {
+        const productDetails = products.find(p => p.product_code === product.product_code);
+
+        let amount = parseFloat(product.amt) || 0;
+        let quantity = amount;  // Default for retail unit
+        let retailPrice = Number(product.uprice) || 0;
+
+        // Convert quantity to retail units if input is in bulk units
+        if (product.unit_code === productDetails?.bulk_unit_code) {
+          const conversion = parseInt(productDetails.unit_conversion_factor) || 1;
+          quantity = amount * conversion;
+          retailPrice = retailPrice / conversion;  // Convert price to retail unit price
+        }
+
+        return {
+          refno: headerData.refno,
+          rdate: headerData.rdate,
+          trdate: headerData.trdate,
+          myear: headerData.myear,
+          monthh: headerData.monthh,
+          product_code: product.product_code,
+          unit_code: productDetails?.retail_unit_code || product.unit_code,
+          beg1: 0,
+          in1: quantity,  // Use converted quantity for bulk units
+          out1: 0,
+          upd1: 0,
+          uprice: retailPrice,  // Always store retail unit price
+          beg1_amt: 0,
+          in1_amt: amount * product.uprice,  // Use original amount and price
+          out1_amt: 0,
+          upd1_amt: 0
+        };
+      });
+
+      console.log('Final stockcard records:', stockcardRecords);
+
+      await Wh_stockcard.bulkCreate(stockcardRecords, { transaction: t });
+
+      await t.commit();
+      res.status(200).send({ result: true });
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log(error);
+    res.status(500).send({ message: error.message });
   }
 };
 

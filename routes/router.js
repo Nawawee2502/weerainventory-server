@@ -209,6 +209,13 @@ const {
   Query_Wh_stockcard,
 } = require("../controllers/wh_stockcardController")
 
+const {
+  addWh_product_lotno,
+  updatewh_product_lotno,
+  deletewh_product_lotno,
+  Query_wh_product_lotno,
+} = require("../controllers/wh_product_lotnoController")
+
 
 const {
   addKt_pow,
@@ -709,7 +716,12 @@ router.post("/addWh_stockcard", addWh_stockcard);
 router.post("/updatewh_stockcard", updateWh_stockcard);
 router.post("/deletewh_stockcard", deleteWh_stockcard);
 router.post("/countWh_stockcard", countWh_stockcard);
-router.post("/Query_Wh_stockcard", Query_Wh_stockcard)
+router.post("/Query_Wh_stockcard", Query_Wh_stockcard);
+
+router.post("/addWh_product_lotno", addWh_product_lotno);
+router.post("/updatewh_product_lotno", updatewh_product_lotno);
+router.post("/deletewh_product_lotno", deletewh_product_lotno);
+router.post("/Query_wh_product_lotno", Query_wh_product_lotno);
 
 //ครัวกลาง
 //ใบนับสต็อก
