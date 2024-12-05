@@ -112,12 +112,19 @@ exports.productAll = async (req, res) => {
 
 exports.productAlltypeproduct = async (req, res) => {
   try {
-    const { offset, limit, typeproduct_code } = req.body;
+    const { offset, limit, typeproduct_code, product_name } = req.body;
     const { Op } = require("sequelize");
 
     let whereClause = {};
+
     if (typeproduct_code) {
       whereClause.typeproduct_code = typeproduct_code;
+    }
+
+    if (product_name) {
+      whereClause.product_name = {
+        [Op.like]: `%${product_name}%`
+      };
     }
 
     const productShow = await tbl_productModel.findAll({
@@ -212,38 +219,25 @@ exports.productcode = async (req, res) => {
 
 exports.countProduct = async (req, res) => {
   try {
-    const { typeproduct_code } = req.body;
+    const { typeproduct_code, product_name } = req.body;
     const { Op } = require("sequelize");
 
-    let queryOptions = {
-      distinct: true,
-      col: 'product_code', // เปลี่ยนจาก id เป็น product_code
-      include: [
-        {
-          model: tbl_TypeproductModel,
-          required: true
-        },
-        {
-          model: tbl_unit,
-          as: 'productUnit1',
-          required: true
-        },
-        {
-          model: tbl_unit,
-          as: 'productUnit2',
-          required: true
-        }
-      ]
-    };
+    let whereClause = {};
 
-    // เพิ่มเงื่อนไขเฉพาะเมื่อมี typeproduct_code
     if (typeproduct_code) {
-      queryOptions.where = {
-        typeproduct_code: typeproduct_code
+      whereClause.typeproduct_code = typeproduct_code;
+    }
+
+    if (product_name) {
+      whereClause.product_name = {
+        [Op.like]: `%${product_name}%`
       };
     }
 
-    const amount = await tbl_productModel.count(queryOptions);
+    // เปลี่ยนการใช้ count และลบ includes ที่ไม่จำเป็น
+    const amount = await tbl_productModel.count({
+      where: whereClause
+    });
 
     res.status(200).send({
       result: true,

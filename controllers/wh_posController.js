@@ -128,12 +128,17 @@ exports.Wh_posAllrdate = async (req, res) => {
 exports.Wh_posAlljoindt = async (req, res) => {
   try {
     const { offset, limit } = req.body;
+    const { rdate } = req.body;
     const { rdate1, rdate2 } = req.body;
     const { supplier_code, branch_code, product_code } = req.body;
     const { Op } = require("sequelize");
 
     // สร้าง where clause สำหรับ header
     let whereClause = {};
+
+    if (rdate) {
+      whereClause.rdate = rdate;
+    }
 
     // ถ้ามี rdate1 และ rdate2 ถึงจะเพิ่มเงื่อนไข between
     if (rdate1 && rdate2) {
@@ -288,8 +293,17 @@ exports.Wh_posByRefno = async (req, res) => {
 
 exports.countWh_pos = async (req, res) => {
   try {
-    // นับจำนวนรายการทั้งหมด
-    const amount = await wh_posModel.count();
+    const { rdate } = req.body;
+    let whereClause = {};
+
+    // เพิ่มเงื่อนไขการนับตามวันที่ที่เลือก
+    if (rdate) {
+      whereClause.rdate = rdate;
+    }
+
+    const amount = await wh_posModel.count({
+      where: whereClause
+    });
 
     res.status(200).send({
       result: true,
