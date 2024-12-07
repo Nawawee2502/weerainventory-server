@@ -1,6 +1,6 @@
 module.exports = (sequelize, DataTypes) => {
     const Wh_dpbdtModel = sequelize.define(
-      "wh_dbpdt",
+      "wh_dpbdt",
       {
         refno: {
           type: DataTypes.STRING(20),

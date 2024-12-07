@@ -313,6 +313,18 @@ db.Wh_dpkdt.belongsTo(db.Wh_dpk, {
   // as: 'posdttopos'
 });
 
+db.Wh_dpk.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Wh_dpk, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'wh_dpk'
+});
+
 
 db.Wh_dpk.belongsTo(db.Tbl_kitchen, {
   foreignKey: 'kitchen_code',  // foreignKey ของ Type Product

@@ -169,7 +169,8 @@ const {
   Wh_dpbAllrdate,
   Wh_dpbrefno,
   searchWh_dpbRunno,
-  Wh_dpbByRefno
+  Wh_dpbByRefno,
+  countWh_dpb
 } = require("../controllers/wh_dpbController")
 
 const {
@@ -688,7 +689,8 @@ router.post("/wh_dpbAlljoindt", Wh_dpbAlljoindt);
 router.post("/Wh_dpbAllrdate", Wh_dpbAllrdate);
 router.post("/Wh_dpbrefno", Wh_dpbrefno);
 router.post("/wh_dpbbyrefno", Wh_dpbByRefno);
-router.post("/searchWh_dpbRunno", searchWh_dpbRunno)
+router.post("/searchWh_dpbRunno", searchWh_dpbRunno);
+router.post("/countWh_dpb", countWh_dpb);
 
 router.post("/addWh_dpbdt", addWh_dpbdt);
 router.post("/updatewh_dpbdt", updateWh_dpbdt);

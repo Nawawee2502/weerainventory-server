@@ -3,18 +3,15 @@ const wh_dpbdtModel = require("../models/mainModel").Wh_dpbdt;
 const unitModel = require("../models/mainModel").Tbl_unit;
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const {  sequelize, Tbl_product } = require("../models/mainModel");
+const { sequelize, Tbl_product } = require("../models/mainModel");
 const { Tbl_branch } = require("../models/mainModel");
 
 exports.addWh_dpb = async (req, res) => {
   try {
-    // console.log("req",req)
     const headerData = req.body.headerData;
-    // console.log("req.body", req.body)
-    // console.log("headerData", headerData)
+    console.log("headerData", headerData)
     const productArrayData = req.body.productArrayData;
     const footerData = req.body.footerData;
-    // console.log("footerData", footerData)
 
     wh_dpbModel.create({
       refno: headerData.refno,
@@ -24,9 +21,9 @@ exports.addWh_dpb = async (req, res) => {
       monthh: headerData.monthh,
       myear: headerData.myear,
       user_code: headerData.user_code,
-      taxable: footerData.taxable,
-      nontaxable: footerData.nontaxable,
-      total: footerData.total,
+      taxable: headerData.taxable,
+      nontaxable: headerData.nontaxable,
+      total: footerData.total
     })
       .then(() => {
         console.log("THEN")
@@ -38,99 +35,160 @@ exports.addWh_dpb = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-
 };
 
 exports.updateWh_dpb = async (req, res) => {
   try {
-    wh_dpbModel.update(
+    await wh_dpbModel.update(
       {
-        rdate: req.body.rdate, //19/10/2024
-        trdate: req.body.trdate, //20241019
-        myear: req.body.myear, // 2024
-        monthh: req.body.monthh, //10
+        rdate: req.body.rdate,
+        trdate: req.body.trdate,
+        myear: req.body.myear,
+        monthh: req.body.monthh,
         branch_code: req.body.branch_code,
         taxable: req.body.taxable,
         nontaxable: req.body.nontaxable,
         total: req.body.total,
-        user_code: req.body.user_code
+        user_code: req.body.user_code,
       },
       { where: { refno: req.body.refno } }
     );
-    res.status(200).send({ result: true })
+
+    res.status(200).send({ result: true });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    res.status(500).send({ message: error });
   }
-
 };
-
 
 exports.deleteWh_dpb = async (req, res) => {
   try {
-    wh_dpbModel.destroy(
-      { where: { refno: req.body.refno } }
-    );
-    res.status(200).send({ result: true })
+    await wh_dpbModel.destroy({ where: { refno: req.body.refno } });
+    res.status(200).send({ result: true });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    res.status(500).send({ message: error });
   }
-
 };
 
 exports.Wh_dpbAllrdate = async (req, res) => {
   try {
-    const { offset, limit, rdate1, rdate2,  branch_name } = req.body;
+    const { offset, limit, rdate1, rdate2, branch_name } = req.body;
     const { Op } = require("sequelize");
 
-
     const wherebranch = { branch_name: { [Op.like]: '%', } };
-    if (branch_name)
-      wherebranch = { $like: '%' + branch_name + '%' };
+    if (branch_name) wherebranch = { $like: '%' + branch_name + '%' };
 
     const wh_dpbShow = await wh_dpbModel.findAll({
       include: [
         {
           model: Tbl_branch,
           attributes: ['branch_code', 'branch_name'],
-          // where: { branch_name: {[Op.like]: '%'+(branch_name)+'%',}},
           where: wherebranch,
           required: true,
         },
       ],
       where: { trdate: { [Op.between]: [rdate1, rdate2] } },
+      offset,
+      limit,
     });
-    res.status(200).send({ result: true, data: wh_dpbShow })
+
+    res.status(200).send({ result: true, data: wh_dpbShow });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    res.status(500).send({ message: error });
   }
 };
 
 exports.Wh_dpbAlljoindt = async (req, res) => {
   try {
-    // const { offset, limit } = req.body;
+    const { offset, limit, rdate1, rdate2, branch_name } = req.body;
+    const { Op } = require("sequelize");
 
-    const wh_dpbShow = await wh_dpbModel.findAll({
+    // Create the where clause for the header
+    let whereClause = {};
+
+    if (rdate1 && rdate2) {
+      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    }
+
+    if (branch_name && branch_name !== '') {
+      whereClause.branch_name = { [Op.like]: `%${branch_name}%` };
+    }
+
+    // Fetch the header data first
+    let wh_dpb_headers = await wh_dpbModel.findAll({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'branch_code', 'branch_name', 'taxable', 'nontaxable',
+        'total', 'user_code', 'created_at'
+      ],
       include: [
         {
-          model: wh_dpbdtModel,
-          // as: "postoposdt",
-          // required: true,
-        },
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          required: true
+        }
       ],
-      // where: { refno: 'WPOS2410013' }
-      // offset:offset,limit:limit 
+      where: whereClause,
+      order: [['refno', 'ASC']],
+      offset,
+      limit
     });
-    res.status(200).send({ result: true, data: wh_dpbShow })
+
+    // Fetch the detail data
+    if (wh_dpb_headers.length > 0) {
+      const refnos = wh_dpb_headers.map(header => header.refno);
+
+      // Create the where clause for the details
+      let whereDetailClause = {
+        refno: refnos
+      };
+
+      const details = await wh_dpbdtModel.findAll({
+        where: whereDetailClause,
+        include: [
+          {
+            model: Tbl_product,
+            attributes: ['product_code', 'product_name'],
+            required: true
+          },
+          {
+            model: Tbl_unit,
+            as: 'productUnit1',
+            required: true
+          },
+          {
+            model: Tbl_unit,
+            as: 'productUnit2',
+            required: true
+          }
+        ]
+      });
+
+      // Group the detail data by refno
+      const detailsByRefno = {};
+      details.forEach(detail => {
+        if (!detailsByRefno[detail.refno]) {
+          detailsByRefno[detail.refno] = [];
+        }
+        detailsByRefno[detail.refno].push(detail);
+      });
+
+      // Combine the header and detail data
+      wh_dpb_headers = wh_dpb_headers.map(header => {
+        const headerData = header.toJSON();
+        headerData.wh_dpbdts = detailsByRefno[header.refno] || [];
+        return headerData;
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: wh_dpb_headers
+    });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    res.status(500).send({ message: error });
   }
 };
 
-// *********************แก้ไขใหม่********************* 
 exports.Wh_dpbByRefno = async (req, res) => {
   try {
     const { refno } = req.body;
@@ -142,29 +200,18 @@ exports.Wh_dpbByRefno = async (req, res) => {
           include: [{
             model: Tbl_product,
             include: [
-              {
-                model: unitModel,
-                as: 'productUnit1',
-                required: true,
-              },
-              {
-                model: unitModel,
-                as: 'productUnit2',
-                required: true,
-              },
+              { model: Tbl_unit, as: 'productUnit1', required: true },
+              { model: Tbl_unit, as: 'productUnit2', required: true },
             ],
           }],
-          // as: "postoposdt",
-          // required: true,
         },
       ],
-      where: { refno: refno }
-      // offset:offset,limit:limit 
+      where: { refno },
     });
-    res.status(200).send({ result: true, data: wh_dpbShow })
+
+    res.status(200).send({ result: true, data: wh_dpbShow });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    res.status(500).send({ message: error });
   }
 };
 
@@ -178,19 +225,16 @@ exports.countWh_dpb = async (req, res) => {
         },
       },
     });
-    res.status(200).send({ result: true, data: amount })
+    res.status(200).send({ result: true, data: amount });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    res.status(500).send({ message: error });
   }
 };
 
 exports.searchWh_dpbrefno = async (req, res) => {
   try {
-    // console.log( req.body.type_productname);
     const { Op } = require("sequelize");
-    const { refno } = await req.body;
-    // console.log((typeproduct_name));
+    const { refno } = req.body;
 
     const Wh_dpbShow = await wh_dpbModel.findAll({
       where: {
@@ -199,11 +243,10 @@ exports.searchWh_dpbrefno = async (req, res) => {
         },
       }
     });
-    res.status(200).send({ result: true, data: Wh_dpbShow });
 
+    res.status(200).send({ result: true, data: Wh_dpbShow });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    res.status(500).send({ message: error });
   }
 };
 
@@ -212,10 +255,9 @@ exports.Wh_dpbrefno = async (req, res) => {
     const refno = await wh_dpbModel.findOne({
       order: [['refno', 'DESC']],
     });
-    res.status(200).send({ result: true, data: refno })
+    res.status(200).send({ result: true, data: refno });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    res.status(500).send({ message: error });
   }
 }
 
@@ -229,9 +271,7 @@ exports.searchWh_dpbRunno = async (req, res) => {
       order: [['refno', 'DESC']],
     });
     res.status(200).send({ result: true, data: Wh_dpbShow });
-
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    res.status(500).send({ message: error });
   }
-};
+}
