@@ -381,7 +381,17 @@ db.Tbl_kitchen.hasMany(db.Wh_rfk, {
   sourceKey: 'kitchen_code', // sourceKey ของ Product
 });
 
+db.Wh_rfk.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
 
+db.User.hasMany(db.Wh_rfk, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'wh_rfk'
+});
 
 db.Wh_rfkdt.belongsTo(db.Tbl_unit, {
   foreignKey: 'unit_code',  // foreignKey ของ Type Product
