@@ -313,6 +313,8 @@ db.Wh_dpkdt.belongsTo(db.Wh_dpk, {
   // as: 'posdttopos'
 });
 
+
+
 db.Wh_dpk.belongsTo(db.User, {
   foreignKey: 'user_code',
   targetKey: 'user_code',
@@ -424,6 +426,18 @@ db.Wh_dpbdt.belongsTo(db.Wh_dpb, {
   foreignKey: 'refno',  // foreignKey ของ Type Product
   targetKey: 'refno' // targetKey ของ Product
   // as: 'posdttopos'
+});
+
+db.Wh_dpb.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Wh_dpb, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'wh_dpb'
 });
 
 

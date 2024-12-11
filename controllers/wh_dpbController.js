@@ -1,10 +1,13 @@
-const wh_dpbModel = require("../models/mainModel").Wh_dpb;
-const wh_dpbdtModel = require("../models/mainModel").Wh_dpbdt;
-const unitModel = require("../models/mainModel").Tbl_unit;
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const { sequelize, Tbl_product } = require("../models/mainModel");
-const { Tbl_branch } = require("../models/mainModel");
+const {
+  User,
+  Tbl_branch,
+  Tbl_product,
+  Tbl_unit: unitModel,
+  Wh_dpb: wh_dpbModel,
+  Wh_dpbdt: wh_dpbdtModel
+} = require("../models/mainModel");
 
 exports.addWh_dpb = async (req, res) => {
   try {
@@ -99,32 +102,36 @@ exports.Wh_dpbAllrdate = async (req, res) => {
 
 exports.Wh_dpbAlljoindt = async (req, res) => {
   try {
-    const { offset, limit, rdate1, rdate2, branch_name } = req.body;
+    const { offset, limit, rdate1, rdate2, branch_code, product_code } = req.body;
     const { Op } = require("sequelize");
 
-    // Create the where clause for the header
     let whereClause = {};
 
     if (rdate1 && rdate2) {
       whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
     }
 
-    if (branch_name && branch_name !== '') {
-      whereClause.branch_name = { [Op.like]: `%${branch_name}%` };
+    if (branch_code && branch_code !== '') {
+      whereClause.branch_code = branch_code;
     }
 
-    // Fetch the header data first
     let wh_dpb_headers = await wh_dpbModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
-        'branch_code', 'branch_name', 'taxable', 'nontaxable',
+        'branch_code', 'taxable', 'nontaxable',
         'total', 'user_code', 'created_at'
       ],
       include: [
         {
           model: Tbl_branch,
           attributes: ['branch_code', 'branch_name'],
-          required: true
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
         }
       ],
       where: whereClause,
@@ -133,14 +140,18 @@ exports.Wh_dpbAlljoindt = async (req, res) => {
       limit
     });
 
-    // Fetch the detail data
     if (wh_dpb_headers.length > 0) {
       const refnos = wh_dpb_headers.map(header => header.refno);
 
-      // Create the where clause for the details
       let whereDetailClause = {
         refno: refnos
       };
+
+      if (product_code && product_code !== '') {
+        whereDetailClause['$tbl_product.product_name$'] = {
+          [Op.like]: `%${product_code}%`
+        };
+      }
 
       const details = await wh_dpbdtModel.findAll({
         where: whereDetailClause,
@@ -151,19 +162,13 @@ exports.Wh_dpbAlljoindt = async (req, res) => {
             required: true
           },
           {
-            model: Tbl_unit,
-            as: 'productUnit1',
-            required: true
-          },
-          {
-            model: Tbl_unit,
-            as: 'productUnit2',
-            required: true
+            model: unitModel,  // เปลี่ยนจาก as: 'productUnit1' เป็นการใช้ model โดยตรง
+            attributes: ['unit_code', 'unit_name'],
+            required: false
           }
         ]
       });
 
-      // Group the detail data by refno
       const detailsByRefno = {};
       details.forEach(detail => {
         if (!detailsByRefno[detail.refno]) {
@@ -172,7 +177,6 @@ exports.Wh_dpbAlljoindt = async (req, res) => {
         detailsByRefno[detail.refno].push(detail);
       });
 
-      // Combine the header and detail data
       wh_dpb_headers = wh_dpb_headers.map(header => {
         const headerData = header.toJSON();
         headerData.wh_dpbdts = detailsByRefno[header.refno] || [];
@@ -185,7 +189,8 @@ exports.Wh_dpbAlljoindt = async (req, res) => {
       data: wh_dpb_headers
     });
   } catch (error) {
-    res.status(500).send({ message: error });
+    console.error("Error in Wh_dpbAlljoindt:", error);
+    res.status(500).send({ message: error.message });
   }
 };
 

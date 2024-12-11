@@ -1,10 +1,12 @@
-const wh_dpkModel = require("../models/mainModel").Wh_dpk;
-const wh_dpkdtModel = require("../models/mainModel").Wh_dpkdt;
-const unitModel = require("../models/mainModel").Tbl_unit;
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
-const { sequelize, Tbl_product } = require("../models/mainModel");
-const { Tbl_kitchen } = require("../models/mainModel");
+const { 
+  User,
+  Tbl_kitchen, 
+  sequelize, 
+  Tbl_product, 
+  Tbl_unit: unitModel, 
+  Wh_dpk: wh_dpkModel, 
+  Wh_dpkdt: wh_dpkdtModel 
+} = require("../models/mainModel");
 
 exports.addWh_dpk = async (req, res) => {
   try {
@@ -39,18 +41,10 @@ exports.addWh_dpk = async (req, res) => {
 
 exports.Wh_dpkAlljoindt = async (req, res) => {
   try {
-    const { offset, limit } = req.body;
-    const { rdate } = req.body;
-    const { rdate1, rdate2 } = req.body;
-    const { kitchen_code, product_code } = req.body;
+    const { offset, limit, rdate1, rdate2, kitchen_code, product_code } = req.body;
     const { Op } = require("sequelize");
 
-    // สร้าง where clause สำหรับ header
     let whereClause = {};
-
-    if (rdate) {
-      whereClause.rdate = rdate;
-    }
 
     if (rdate1 && rdate2) {
       whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
@@ -60,7 +54,6 @@ exports.Wh_dpkAlljoindt = async (req, res) => {
       whereClause.kitchen_code = kitchen_code;
     }
 
-    // ดึงข้อมูลหลักก่อน
     let wh_dpk_headers = await wh_dpkModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
@@ -74,7 +67,7 @@ exports.Wh_dpkAlljoindt = async (req, res) => {
           required: false
         },
         {
-          model: db.User,
+          model: User,
           as: 'user',
           attributes: ['user_code', 'username'],
           required: false
@@ -82,23 +75,20 @@ exports.Wh_dpkAlljoindt = async (req, res) => {
       ],
       where: whereClause,
       order: [['refno', 'ASC']],
-      offset: offset,
-      limit: limit
+      offset,
+      limit
     });
 
-    // ดึงข้อมูลรายละเอียดแยก
     if (wh_dpk_headers.length > 0) {
       const refnos = wh_dpk_headers.map(header => header.refno);
 
-      // สร้าง where clause สำหรับ details
       let whereDetailClause = {
         refno: refnos
       };
 
       if (product_code && product_code !== '') {
-        whereDetailClause = {
-          refno: refnos,
-          '$tbl_product.product_name$': { [Op.like]: `%${product_code}%` }
+        whereDetailClause['$tbl_product.product_name$'] = {
+          [Op.like]: `%${product_code}%`
         };
       }
 
@@ -118,7 +108,6 @@ exports.Wh_dpkAlljoindt = async (req, res) => {
         ]
       });
 
-      // จัดกลุ่มข้อมูลรายละเอียดตาม refno
       const detailsByRefno = {};
       details.forEach(detail => {
         if (!detailsByRefno[detail.refno]) {
@@ -127,7 +116,6 @@ exports.Wh_dpkAlljoindt = async (req, res) => {
         detailsByRefno[detail.refno].push(detail);
       });
 
-      // รวมข้อมูลเข้าด้วยกัน
       wh_dpk_headers = wh_dpk_headers.map(header => {
         const headerData = header.toJSON();
         headerData.wh_dpkdts = detailsByRefno[header.refno] || [];
@@ -135,15 +123,12 @@ exports.Wh_dpkAlljoindt = async (req, res) => {
       });
     }
 
-    console.log('Query Result:', JSON.stringify(wh_dpk_headers, null, 2));
-
     res.status(200).send({
       result: true,
       data: wh_dpk_headers
     });
-
   } catch (error) {
-    console.log("Error in Wh_dpkAlljoindt:", error);
+    console.error("Error in Wh_dpkAlljoindt:", error);
     res.status(500).send({ message: error.message });
   }
 };
