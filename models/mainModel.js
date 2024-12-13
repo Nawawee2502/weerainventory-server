@@ -1074,6 +1074,18 @@ db.Tbl_supplier.hasMany(db.Br_pow, {
   sourceKey: 'supplier_code', // sourceKey ของ Product
 });
 
+db.Br_pow.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Br_pow, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'br_pow'
+});
+
 
 db.Br_powdt.belongsTo(db.Tbl_unit, {
   foreignKey: 'unit_code',  // foreignKey ของ Type Product
@@ -1106,6 +1118,18 @@ db.Br_rfwdt.belongsTo(db.Br_rfw, {
   foreignKey: 'refno',  // foreignKey ของ Type Product
   targetKey: 'refno' // targetKey ของ Product
   // as: 'posdttopos'
+});
+
+db.Br_rfw.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Br_rfw, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'br_rfw'
 });
 
 
@@ -1149,6 +1173,18 @@ db.Br_rfkdt.belongsTo(db.Br_rfk, {
   foreignKey: 'refno',  // foreignKey ของ Type Product
   targetKey: 'refno' // targetKey ของ Product
   // as: 'posdttopos'
+});
+
+db.Br_rfk.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Br_rfk, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'br_rfk'
 });
 
 
@@ -1202,6 +1238,17 @@ db.Br_rfsdt.belongsTo(db.Br_rfs, {
   // as: 'posdttopos'
 });
 
+db.Br_rfs.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Br_rfs, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'br_rfs'
+});
 
 db.Br_rfs.belongsTo(db.Tbl_supplier, {
   foreignKey: 'supplier_code',  // foreignKey ของ Type Product

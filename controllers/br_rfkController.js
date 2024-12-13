@@ -1,22 +1,25 @@
-const Br_rfkModel = require("../models/mainModel").Br_rfk;
-const Br_rfkdtModel = require("../models/mainModel").Br_rfkdt;
-const unitModel = require("../models/mainModel").Tbl_unit;
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
-const { Tbl_supplier, sequelize, Tbl_product, Tbl_kitchen } = require("../models/mainModel");
-const { Tbl_branch } = require("../models/mainModel");
+const {
+  Tbl_kitchen,
+  sequelize,
+  Tbl_product,
+  User,
+  Br_rfk: br_rfkModel,
+  Br_rfkdt: br_rfkdtModel,
+  Tbl_unit: unitModel,
+  Tbl_branch
+} = require("../models/mainModel");
 
 exports.addBr_rfk = async (req, res) => {
   try {
-    // console.log("req",req)
     const headerData = req.body.headerData;
-    // console.log("req.body", req.body)
-    // console.log("headerData", headerData)
     const productArrayData = req.body.productArrayData;
     const footerData = req.body.footerData;
-    // console.log("footerData", footerData)
 
-    Br_rfkModel.create({
+    const t = await sequelize.transaction();
+
+    try {
+      // Create BR_RFK record
+      await br_rfkModel.create({
         refno: headerData.refno,
         rdate: headerData.rdate,
         kitchen_code: headerData.kitchen_code,
@@ -27,29 +30,32 @@ exports.addBr_rfk = async (req, res) => {
         user_code: headerData.user_code,
         taxable: footerData.taxable,
         nontaxable: footerData.nontaxable,
-        total: footerData.total,
-    })
-      .then(() => {
-        // console.log("THEN")
-        // console.log(productArrayData)
-        Br_rfkdtModel.bulkCreate(productArrayData)
-      })
-    res.status(200).send({ result: true })
-  } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
-  }
+        total: footerData.total
+      }, { transaction: t });
 
+      // Create BR_RFKDT records
+      await br_rfkdtModel.bulkCreate(productArrayData, { transaction: t });
+
+      await t.commit();
+      res.status(200).send({ result: true });
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({ message: error.message });
+  }
 };
 
 exports.updateBr_rfk = async (req, res) => {
   try {
-    Br_rfkModel.update(
+    br_rfkModel.update(
       {
-        rdate: req.body.rdate, //19/10/2024
-        trdate: req.body.trdate, //20241019
-        myear: req.body.myear, // 2024
-        monthh: req.body.monthh, //10
+        rdate: req.body.rdate,
+        trdate: req.body.trdate,
+        myear: req.body.myear,
+        monthh: req.body.monthh,
         kitchen_code: req.body.kitchen_code,
         branch_code: req.body.branch_code,
         taxable: req.body.taxable,
@@ -64,13 +70,11 @@ exports.updateBr_rfk = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-
 };
-
 
 exports.deleteBr_rfk = async (req, res) => {
   try {
-    Br_rfkModel.destroy(
+    br_rfkModel.destroy(
       { where: { refno: req.body.refno } }
     );
     res.status(200).send({ result: true })
@@ -78,7 +82,6 @@ exports.deleteBr_rfk = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-
 };
 
 exports.Br_rfkAllrdate = async (req, res) => {
@@ -86,34 +89,34 @@ exports.Br_rfkAllrdate = async (req, res) => {
     const { offset, limit, rdate1, rdate2, kitchen_name, branch_name } = req.body;
     const { Op } = require("sequelize");
 
-    const wherekitchen = { kitchen_name: { [Op.like]: '%', } };
-    if (kitchen_name)
-      wherekitchen = { $like: '%' + kitchen_name + '%' };
+    let wherekitchen = { kitchen_name: { [Op.like]: '%' } };
+    if (kitchen_name) {
+      wherekitchen = { kitchen_name: { [Op.like]: `%${kitchen_name}%` } };
+    }
 
-    const wherebranch = { branch_name: { [Op.like]: '%', } };
-      if (branch_name)
-        wherebranch = { $like: '%' + branch_name + '%' };
-    
-    const Br_rfkShow = await Br_rfkModel.findAll({
+    let wherebranch = { branch_name: { [Op.like]: '%' } };
+    if (branch_name) {
+      wherebranch = { branch_name: { [Op.like]: `%${branch_name}%` } };
+    }
+
+    const br_rfkShow = await br_rfkModel.findAll({
       include: [
-        {
-          model: Tbl_branch,
-          attributes: ['branch_code', 'branch_name'],
-          // where: { branch_name: {[Op.like]: '%'+(branch_name)+'%',}},
-          where: wherebranch,
-          required: true,
-        },
         {
           model: Tbl_kitchen,
           attributes: ['kitchen_code', 'kitchen_name'],
-          // where: { branch_name: {[Op.like]: '%'+(branch_name)+'%',}},
           where: wherekitchen,
+          required: true,
+        },
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          where: wherebranch,
           required: true,
         },
       ],
       where: { trdate: { [Op.between]: [rdate1, rdate2] } },
     });
-    res.status(200).send({ result: true, data: Br_rfkShow })
+    res.status(200).send({ result: true, data: br_rfkShow })
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
@@ -122,35 +125,119 @@ exports.Br_rfkAllrdate = async (req, res) => {
 
 exports.Br_rfkAlljoindt = async (req, res) => {
   try {
-    // const { offset, limit } = req.body;
+    const { offset, limit } = req.body;
+    const { rdate1, rdate2 } = req.body;
+    const { kitchen_code, branch_code, product_code } = req.body;
+    const { Op } = require("sequelize");
 
-    const Br_rfkShow = await Br_rfkModel.findAll({
+    let whereClause = {};
+
+    if (rdate1 && rdate2) {
+      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    }
+
+    if (kitchen_code && kitchen_code !== '') {
+      whereClause.kitchen_code = kitchen_code;
+    }
+
+    if (branch_code && branch_code !== '') {
+      whereClause.branch_code = branch_code;
+    }
+
+    let br_rfk_headers = await br_rfkModel.findAll({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'kitchen_code', 'branch_code', 'taxable', 'nontaxable',
+        'total', 'user_code', 'created_at'
+      ],
       include: [
         {
-          model: Br_rfkdtModel,
-          // as: "postoposdt",
-          // required: true,
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
+          required: false
         },
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
       ],
-      // where: { refno: 'WPOS2410013' }
-      // offset:offset,limit:limit 
+      where: whereClause,
+      order: [['refno', 'ASC']],
+      offset: offset,
+      limit: limit
     });
-    res.status(200).send({ result: true, data: Br_rfkShow })
+
+    if (br_rfk_headers.length > 0) {
+      const refnos = br_rfk_headers.map(header => header.refno);
+
+      let whereDetailClause = {
+        refno: refnos
+      };
+
+      if (product_code && product_code !== '') {
+        whereDetailClause = {
+          refno: refnos,
+          '$tbl_product.product_name$': { [Op.like]: `%${product_code}%` }
+        };
+      }
+
+      const details = await br_rfkdtModel.findAll({
+        where: whereDetailClause,
+        include: [
+          {
+            model: Tbl_product,
+            attributes: ['product_code', 'product_name'],
+            required: true
+          },
+          {
+            model: unitModel,
+            attributes: ['unit_code', 'unit_name'],
+            required: false
+          }
+        ]
+      });
+
+      const detailsByRefno = {};
+      details.forEach(detail => {
+        if (!detailsByRefno[detail.refno]) {
+          detailsByRefno[detail.refno] = [];
+        }
+        detailsByRefno[detail.refno].push(detail);
+      });
+
+      br_rfk_headers = br_rfk_headers.map(header => {
+        const headerData = header.toJSON();
+        headerData.br_rfkdts = detailsByRefno[header.refno] || [];
+        return headerData;
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: br_rfk_headers
+    });
+
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log("Error in Br_rfkAlljoindt:", error);
+    res.status(500).send({ message: error.message });
   }
 };
 
-// *********************แก้ไขใหม่********************* 
 exports.Br_rfkByRefno = async (req, res) => {
   try {
     const { refno } = req.body;
 
-    const Br_rfkShow = await Br_rfkModel.findOne({
+    const br_rfkShow = await br_rfkModel.findOne({
       include: [
         {
-          model: Br_rfkdtModel,
+          model: br_rfkdtModel,
           include: [{
             model: Tbl_product,
             include: [
@@ -166,14 +253,11 @@ exports.Br_rfkByRefno = async (req, res) => {
               },
             ],
           }],
-          // as: "postoposdt",
-          // required: true,
         },
       ],
       where: { refno: refno }
-      // offset:offset,limit:limit 
     });
-    res.status(200).send({ result: true, data: Br_rfkShow })
+    res.status(200).send({ result: true, data: br_rfkShow })
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
@@ -183,7 +267,7 @@ exports.Br_rfkByRefno = async (req, res) => {
 exports.countBr_rfk = async (req, res) => {
   try {
     const { Op } = require("sequelize");
-    const amount = await Br_rfkModel.count({
+    const amount = await br_rfkModel.count({
       where: {
         refno: {
           [Op.gt]: 0,
@@ -199,20 +283,17 @@ exports.countBr_rfk = async (req, res) => {
 
 exports.searchBr_rfkrefno = async (req, res) => {
   try {
-    // console.log( req.body.type_productname);
     const { Op } = require("sequelize");
-    const { refno } = await req.body;
-    // console.log((typeproduct_name));
+    const { refno } = req.body;
 
-    const Br_rfkShow = await Br_rfkModel.findAll({
+    const br_rfkShow = await br_rfkModel.findAll({
       where: {
         refno: {
           [Op.like]: `%${refno}%`
         },
       }
     });
-    res.status(200).send({ result: true, data: Br_rfkShow });
-
+    res.status(200).send({ result: true, data: br_rfkShow });
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
@@ -221,7 +302,7 @@ exports.searchBr_rfkrefno = async (req, res) => {
 
 exports.Br_rfkrefno = async (req, res) => {
   try {
-    const refno = await Br_rfkModel.findOne({
+    const refno = await br_rfkModel.findOne({
       order: [['refno', 'DESC']],
     });
     res.status(200).send({ result: true, data: refno })
@@ -229,19 +310,18 @@ exports.Br_rfkrefno = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-}
+};
 
 exports.searchBr_rfkRunno = async (req, res) => {
   try {
-    const Br_rfkShow = await Br_rfkModel.findAll({
+    const br_rfkShow = await br_rfkModel.findAll({
       where: {
         myear: req.body.myear,
         monthh: req.body.monthh
       },
       order: [['refno', 'DESC']],
     });
-    res.status(200).send({ result: true, data: Br_rfkShow });
-
+    res.status(200).send({ result: true, data: br_rfkShow });
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })

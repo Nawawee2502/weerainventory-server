@@ -3,35 +3,35 @@ const Br_powdtModel = require("../models/mainModel").Br_powdt;
 const unitModel = require("../models/mainModel").Tbl_unit;
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const { Tbl_supplier, sequelize, Tbl_product, Tbl_kitchen } = require("../models/mainModel");
-const { Tbl_branch } = require("../models/mainModel");
+const db = require("../models/mainModel");
+const {
+  Tbl_supplier,
+  sequelize,
+  Tbl_product,
+  Tbl_branch,
+  User
+} = require("../models/mainModel");
 
 exports.addBr_pow = async (req, res) => {
   try {
-    // console.log("req",req)
     const headerData = req.body.headerData;
-    // console.log("req.body", req.body)
-    // console.log("headerData", headerData)
     const productArrayData = req.body.productArrayData;
     const footerData = req.body.footerData;
-    // console.log("footerData", footerData)
 
     Br_powModel.create({
-        refno: headerData.refno,
-        rdate: headerData.rdate,
-        branch_code: headerData.branch_code,
-        supplier_code: headerData.supplier_code,
-        trdate: headerData.trdate,
-        monthh: headerData.monthh,
-        myear: headerData.myear,
-        user_code: headerData.user_code,
-        taxable: footerData.taxable,
-        nontaxable: footerData.nontaxable,
-        total: footerData.total,
+      refno: headerData.refno,
+      rdate: headerData.rdate,
+      supplier_code: headerData.supplier_code,
+      branch_code: headerData.branch_code,
+      trdate: headerData.trdate,
+      monthh: headerData.monthh,
+      myear: headerData.myear,
+      user_code: headerData.user_code,
+      taxable: footerData.taxable,
+      nontaxable: footerData.nontaxable,
+      total: footerData.total,
     })
       .then(() => {
-        // console.log("THEN")
-        // console.log(productArrayData)
         Br_powdtModel.bulkCreate(productArrayData)
       })
     res.status(200).send({ result: true })
@@ -39,34 +39,31 @@ exports.addBr_pow = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-
 };
 
 exports.updateBr_pow = async (req, res) => {
   try {
     Br_powModel.update(
       {
-        rdate: req.body.rdate, //19/10/2024
-        trdate: req.body.trdate, //20241019
-        myear: req.body.myear, // 2024
-        monthh: req.body.monthh, //10
-        branch_code: req.body.branch_code,
+        rdate: req.body.rdate,
+        trdate: req.body.trdate,
+        myear: req.body.myear,
+        monthh: req.body.monthh,
         supplier_code: req.body.supplier_code,
+        branch_code: req.body.branch_code,
         taxable: req.body.taxable,
         nontaxable: req.body.nontaxable,
         total: req.body.total,
-        user_code: req.body.user_code,
+        user_code: req.body.user_code
       },
       { where: { refno: req.body.refno } }
     );
-    res.status(200).send({ result: true })
+    res.status(200).send({ result: true });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log(error);
+    res.status(500).send({ message: error });
   }
-
 };
-
 
 exports.deleteBr_pow = async (req, res) => {
   try {
@@ -78,7 +75,6 @@ exports.deleteBr_pow = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-
 };
 
 exports.Br_powAllrdate = async (req, res) => {
@@ -88,25 +84,23 @@ exports.Br_powAllrdate = async (req, res) => {
 
     const wherebranch = { branch_name: { [Op.like]: '%', } };
     if (branch_name)
-        wherebranch = { $like: '%' + branch_name + '%' };
+      wherebranch = { $like: '%' + branch_name + '%' };
 
     const wheresupplier = { supplier_name: { [Op.like]: '%', } };
-      if (supplier_name)
-        wheresupplier = { $like: '%' + supplier_name + '%' };
-    
+    if (supplier_name)
+      wheresupplier = { $like: '%' + supplier_name + '%' };
+
     const Br_powShow = await Br_powModel.findAll({
       include: [
         {
           model: Tbl_supplier,
           attributes: ['supplier_code', 'supplier_name'],
-          // where: { supplier_name: {[Op.like]: '%'+(supplier_name)+'%',}},
           where: wheresupplier,
           required: true,
         },
         {
           model: Tbl_branch,
           attributes: ['branch_code', 'branch_name'],
-          // where: { branch_name: {[Op.like]: '%'+(branch_name)+'%',}},
           where: wherebranch,
           required: true,
         },
@@ -122,32 +116,121 @@ exports.Br_powAllrdate = async (req, res) => {
 
 exports.Br_powAlljoindt = async (req, res) => {
   try {
-    // const { offset, limit } = req.body;
+    const { offset, limit } = req.body;
+    const { rdate } = req.body;
+    const { rdate1, rdate2 } = req.body;
+    const { supplier_code, branch_code, product_code } = req.body;
+    const { Op } = require("sequelize");
 
-    const Br_powShow = await Br_powModel.findAll({
+    let whereClause = {};
+
+    if (rdate) {
+      whereClause.rdate = rdate;
+    }
+
+    if (rdate1 && rdate2) {
+      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    }
+
+    if (supplier_code && supplier_code !== '') {
+      whereClause.supplier_code = supplier_code;
+    }
+
+    if (branch_code && branch_code !== '') {
+      whereClause.branch_code = branch_code;
+    }
+
+    let br_pow_headers = await Br_powModel.findAll({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'supplier_code', 'branch_code', 'taxable', 'nontaxable',
+        'total', 'user_code', 'created_at'
+      ],
       include: [
         {
-          model: Br_powdtModel,
-          // as: "postoposdt",
-          // required: true,
+          model: Tbl_supplier,
+          attributes: ['supplier_code', 'supplier_name'],
+          required: false
         },
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          required: false
+        },
+        {
+          model: db.User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
       ],
-      // where: { refno: 'WPOS2410013' }
-      // offset:offset,limit:limit 
+      where: whereClause,
+      order: [['refno', 'ASC']],
+      offset: offset,
+      limit: limit
     });
-    res.status(200).send({ result: true, data: Br_powShow })
+
+    if (br_pow_headers.length > 0) {
+      const refnos = br_pow_headers.map(header => header.refno);
+
+      let whereDetailClause = {
+        refno: refnos
+      };
+
+      if (product_code && product_code !== '') {
+        whereDetailClause = {
+          refno: refnos,
+          '$tbl_product.product_name$': { [Op.like]: `%${product_code}%` }
+        };
+      }
+
+      const details = await Br_powdtModel.findAll({
+        where: whereDetailClause,
+        include: [
+          {
+            model: Tbl_product,
+            attributes: ['product_code', 'product_name'],
+            required: true
+          },
+          {
+            model: unitModel,
+            attributes: ['unit_code', 'unit_name'],
+            required: false
+          }
+        ]
+      });
+
+      const detailsByRefno = {};
+      details.forEach(detail => {
+        if (!detailsByRefno[detail.refno]) {
+          detailsByRefno[detail.refno] = [];
+        }
+        detailsByRefno[detail.refno].push(detail);
+      });
+
+      br_pow_headers = br_pow_headers.map(header => {
+        const headerData = header.toJSON();
+        headerData.br_powdts = detailsByRefno[header.refno] || [];
+        return headerData;
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: br_pow_headers
+    });
+
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log("Error in Br_powAlljoindt:", error);
+    res.status(500).send({ message: error.message });
   }
 };
 
-// *********************แก้ไขใหม่********************* 
 exports.Br_powByRefno = async (req, res) => {
   try {
     const { refno } = req.body;
 
-    const Br_powShow = await Br_powModel.findOne({
+    const br_powShow = await Br_powModel.findOne({
       include: [
         {
           model: Br_powdtModel,
@@ -166,14 +249,11 @@ exports.Br_powByRefno = async (req, res) => {
               },
             ],
           }],
-          // as: "postoposdt",
-          // required: true,
         },
       ],
       where: { refno: refno }
-      // offset:offset,limit:limit 
     });
-    res.status(200).send({ result: true, data: Br_powShow })
+    res.status(200).send({ result: true, data: br_powShow })
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
@@ -182,27 +262,31 @@ exports.Br_powByRefno = async (req, res) => {
 
 exports.countBr_pow = async (req, res) => {
   try {
-    const { Op } = require("sequelize");
+    const { rdate } = req.body;
+    let whereClause = {};
+
+    if (rdate) {
+      whereClause.rdate = rdate;
+    }
+
     const amount = await Br_powModel.count({
-      where: {
-        refno: {
-          [Op.gt]: 0,
-        },
-      },
+      where: whereClause
     });
-    res.status(200).send({ result: true, data: amount })
+
+    res.status(200).send({
+      result: true,
+      data: amount
+    });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log(error);
+    res.status(500).send({ message: error });
   }
 };
 
 exports.searchBr_powrefno = async (req, res) => {
   try {
-    // console.log( req.body.type_productname);
     const { Op } = require("sequelize");
     const { refno } = await req.body;
-    // console.log((typeproduct_name));
 
     const Br_powShow = await Br_powModel.findAll({
       where: {
@@ -229,7 +313,7 @@ exports.Br_powrefno = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-}
+};
 
 exports.searchBr_powRunno = async (req, res) => {
   try {
@@ -241,7 +325,6 @@ exports.searchBr_powRunno = async (req, res) => {
       order: [['refno', 'DESC']],
     });
     res.status(200).send({ result: true, data: Br_powShow });
-
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
