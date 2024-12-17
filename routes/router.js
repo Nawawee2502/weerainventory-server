@@ -4,6 +4,7 @@ const {
   updateUser,
   userAll,
   deleteUser,
+  getlastusercode
 } = require("../controllers/loginController");
 const {
   addtypeproduct,
@@ -537,8 +538,9 @@ router.get("/testApi", (req, res) => {
 router.post("/login", login);
 router.post("/addUser", addUser);
 router.post("/updateUser", updateUser);
-router.get("/userAll", userAll);
+router.post("/userAll", userAll);
 router.post("/deleteUser", deleteUser);
+router.post('/getlastusercode', getlastusercode);
 
 // type_product
 router.post("/addTypeproduct", addtypeproduct);

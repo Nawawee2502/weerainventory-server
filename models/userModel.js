@@ -20,8 +20,13 @@ module.exports = (sequelize, DataTypes) => {
       },
       line_uid: {
         type: DataTypes.STRING(100),
+      },
+      branch_code: {
+        type: DataTypes.STRING(10),
+      },
+      kitchen_code: {
+        type: DataTypes.STRING(10),
       }
-
     },
     {
       freezeTableName: true,

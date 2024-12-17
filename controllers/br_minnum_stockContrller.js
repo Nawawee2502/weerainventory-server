@@ -5,7 +5,7 @@ const bcrypt = require("bcryptjs");
 const multer = require("multer")
 const fs = require("fs")
 const formidable = require('formidable');
-const { Tbl_branchModel} = require("../models/mainModel");
+const { Tbl_branchModel } = require("../models/mainModel");
 const tbl_unit = require("../models/mainModel").Tbl_unit;
 
 
@@ -33,8 +33,12 @@ exports.updateBr_minnum_stock = async (req, res) => {
         unit_code: req.body.unit_code,
         min_qty: req.body.min_qty,
       },
-      { where: { product_code: req.body.product_code,
-            branch_code: req.body.branch_code } }
+      {
+        where: {
+          product_code: req.body.product_code,
+          branch_code: req.body.branch_code
+        }
+      }
     );
     res.status(200).send({ result: true })
   } catch (error) {
@@ -48,8 +52,12 @@ exports.updateBr_minnum_stock = async (req, res) => {
 exports.deleteBr_minnum_stock = async (req, res) => {
   try {
     Br_minnum_stockModel.destroy(
-      { where: { product_code: req.body.product_code ,
-        branch_code: req.body.branch_code } }
+      {
+        where: {
+          product_code: req.body.product_code,
+          branch_code: req.body.branch_code
+        }
+      }
     );
     res.status(200).send({ result: true })
   } catch (error) {
@@ -61,11 +69,9 @@ exports.deleteBr_minnum_stock = async (req, res) => {
 
 exports.Query_Br_minnum_stock = async (req, res) => {
   try {
-    const { offset, limit,branch_code } = req.body;
-    const Br_minnum_stockModelShow = await Br_minnum_stockModel.findAll({ 
-      where: {
-        branch_code: branch_code
-      },
+    const { offset, limit } = req.body;
+
+    const Br_minnum_stockModelShow = await Br_minnum_stockModel.findAll({
       include: [
         {
           model: Tbl_product,
@@ -79,12 +85,14 @@ exports.Query_Br_minnum_stock = async (req, res) => {
         }
       ],
       order: [['product_code', 'ASC']],
-      offset: offset, limit: limit 
+      offset: offset,
+      limit: limit
     });
+
     res.status(200).send({ result: true, data: Br_minnum_stockModelShow })
   } catch (error) {
     console.log(error)
-    res.status(500).send({ message: error })
+    res.status(500).send({ message: error.message })
   }
 };
 
@@ -124,18 +132,20 @@ exports.SearchBr_minnum_stock = async (req, res) => {
     const Br_minnum_stockShow = await Br_minnum_stockModel.findAll({
       include: [
         {
-            model: tbl_productModel,
+          model: tbl_productModel,
         },
         {
-        model: Tbl_branchModel,
+          model: Tbl_branchModel,
         },
         {
-        model: tbl_unitModel,
+          model: tbl_unitModel,
         },
-        
+
       ],
-      where: { product_code: { [Op.eq]: product_code },
-            branch_code: { [Op.eq]: branch_code }  },
+      where: {
+        product_code: { [Op.eq]: product_code },
+        branch_code: { [Op.eq]: branch_code }
+      },
       // where: { trdate: {[Op.between]: [rdate1,rdate2]}},
     });
     console.log(Br_minnum_stockShow)

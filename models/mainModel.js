@@ -30,6 +30,8 @@ db.Tbl_product = require("./productModel")(sequelize, Sequelize)
 db.Tbl_branch = require("./branchModel")(sequelize, Sequelize)
 db.Tbl_kitchen = require("./kitchenModel")(sequelize, Sequelize)
 db.Tbl_supplier = require("./supplierModel")(sequelize, Sequelize)
+db.Tbl_user = require("./userModel")(sequelize, Sequelize)
+db.Tbl_typeuser = require("./typeuserModel")(sequelize, Sequelize)
 
 //set User
 db.Tbl_typeuser = require("./typeuserModel")(sequelize, Sequelize)
@@ -37,17 +39,39 @@ db.Tbl_typeuserpermission = require("./typeuserpermissionModel")(sequelize, Sequ
 db.Tbl_user = require("./userModel")(sequelize, Sequelize)
 
 //manager User
-db.Tbl_user.hasMany(db.Tbl_typeuser, {
-  foreignKey: 'typeuser_code',  // foreignKey ของ Type Product
-  sourceKey: 'typeuser_code' // sourceKey ของ Product
-  // as: 'postoposdt'
+// db.Tbl_user.hasMany(db.Tbl_typeuser, {
+//   foreignKey: 'typeuser_code',  // foreignKey ของ Type Product
+//   sourceKey: 'typeuser_code' // sourceKey ของ Product
+//   // as: 'postoposdt'
+// });
+
+// // *********************แก้ไขใหม่*********************
+// db.Tbl_typeuser.belongsTo(db.Tbl_user, {
+//   foreignKey: 'typeuser_code',  // foreignKey ของ Type Product
+//   targetKey: 'typeuser_code' // targetKey ของ Product
+//   // as: 'posdttopos'
+// });
+
+// typeuser permission
+db.Tbl_typeuserpermission.hasMany(db.Tbl_user, {
+  foreignKey: 'typeuser_code',
+  sourceKey: 'typeuser_code'
 });
 
-// *********************แก้ไขใหม่*********************
-db.Tbl_typeuser.belongsTo(db.Tbl_user, {
-  foreignKey: 'typeuser_code',  // foreignKey ของ Type Product
-  targetKey: 'typeuser_code' // targetKey ของ Product
-  // as: 'posdttopos'
+db.Tbl_user.belongsTo(db.Tbl_typeuserpermission, {
+  foreignKey: 'typeuser_code',
+  targetKey: 'typeuser_code'
+});
+
+// ความสัมพันธ์ระหว่าง User และ Type User
+db.Tbl_typeuser.hasMany(db.Tbl_user, {
+  foreignKey: 'typeuser_code',
+  sourceKey: 'typeuser_code'
+});
+
+db.Tbl_user.belongsTo(db.Tbl_typeuser, {
+  foreignKey: 'typeuser_code',
+  targetKey: 'typeuser_code'
 });
 
 // inner join tbl_product

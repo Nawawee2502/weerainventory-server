@@ -1,4 +1,6 @@
-const { User: userModel, Tbl_typeuser: Tbl_TypeuserModel } = require("../models/mainModel");
+const db = require("../models/mainModel");
+const userModel = db.Tbl_user;
+const Tbl_TypeuserModel = db.Tbl_typeuser;
 
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
@@ -6,35 +8,40 @@ const bcrypt = require("bcryptjs");
 
 exports.login = async (req, res) => {
   try {
-    // Split Json Data to Field
     const { username, password } = req.body;
 
-    // Validate Field
     if (!username || !password)
       return res
         .status(400)
         .send({ message: "Username and Password is Required!" });
 
-    //See All Attribute
-    const userData = await userModel.findOne({ where: { username: username } });
-
-
+    // เพิ่ม include Tbl_TypeuserpermissionModel
+    const userData = await userModel.findOne({
+      where: { username: username },
+      include: [{
+        model: db.Tbl_typeuserpermission,
+        required: false
+      }]
+    });
 
     if (userData && (await bcrypt.compare(password, userData.password))) {
-
       const token = jwt.sign(
         { username: userData.username, password: userData.password },
         process.env.ENCRYPT_TOKEN_KEY,
         { algorithm: 'HS256', expiresIn: 60 * 60 * 24 }
       );
 
-      res
-        .status(200)
-        .send({ result: true, data: userData, tokenKey: token, message: "Login Success" });
+      // ทดสอบดูข้อมูลที่จะส่งกลับ
+      console.log("User data with permissions:", userData);
+
+      res.status(200).send({
+        result: true,
+        data: userData,
+        tokenKey: token,
+        message: "Login Success"
+      });
     } else {
-      res
-        .status(400)
-        .send({ result: false, message: "Invalid User or Password" });
+      res.status(400).send({ result: false, message: "Invalid User or Password" });
     }
   } catch (err) {
     console.log(err);
@@ -62,23 +69,28 @@ exports.addUser = async (req, res) => {
 
 exports.updateUser = async (req, res) => {
   try {
-    userModel.update(
-      {
-        username: req.body.username,
-        typeuser_code: req.body.typeuser_code,
-        password: bcrypt.hashSync(req.body.password),
-        email: req.body.email,
-        line_uid: req.body.line_uid,
+    const updateData = {
+      username: req.body.username,
+      typeuser_code: req.body.typeuser_code,
+      email: req.body.email,
+      line_uid: req.body.line_uid,
+    };
 
-      },
-      { where: { user_code: req.body.user_code } },
-    ),
-      res.status(200).send({ result: true })
+    // เพิ่ม password เฉพาะเมื่อมีการส่งมา
+    if (req.body.password) {
+      updateData.password = bcrypt.hashSync(req.body.password, 10);
+    }
+
+    await userModel.update(
+      updateData,
+      { where: { user_code: req.body.user_code } }
+    );
+
+    res.status(200).send({ result: true });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log(error);
+    res.status(500).send({ message: error });
   }
-
 };
 
 
@@ -103,8 +115,7 @@ exports.userAll = async (req, res) => {
       limit: limit,
       include: [{
         model: Tbl_TypeuserModel,
-        required: false, // ใช้ LEFT JOIN
-        foreignKey: 'typeuser_code'
+        required: false
       }]
     });
     res.status(200).send({ result: true, data: userShow })
@@ -115,16 +126,29 @@ exports.userAll = async (req, res) => {
 };
 
 exports.getlastusercode = async (req, res) => {
+  console.log('getlastusercode API called');
   try {
     const lastusercode = await userModel.findOne({
-      order: [['user_code', 'DESC']], // เรียงจากมากไปน้อย
-      raw: true // เพื่อให้ได้ข้อมูลดิบไม่มี metadata
+      order: [['user_code', 'DESC']],
+      raw: true
     });
-    console.log('Last user code:', lastusercode); // เพิ่ม log เพื่อดูค่าที่ได้
-    res.status(200).send({ result: true, data: lastusercode });
+
+    console.log('Found last user code:', lastusercode);
+
+    if (!lastusercode) {
+      return res.status(200).send({
+        result: true,
+        data: { user_code: '001' }
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: lastusercode
+    });
   } catch (error) {
     console.error('Error in getlastusercode:', error);
-    res.status(500).send({ message: error });
+    res.status(500).send({ message: error.message });
   }
 };
 
