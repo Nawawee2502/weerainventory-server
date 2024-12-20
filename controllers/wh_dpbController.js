@@ -6,37 +6,60 @@ const {
   Tbl_product,
   Tbl_unit: unitModel,
   Wh_dpb: wh_dpbModel,
-  Wh_dpbdt: wh_dpbdtModel
+  Wh_dpbdt: wh_dpbdtModel,
+  sequelize,
+
 } = require("../models/mainModel");
 
 exports.addWh_dpb = async (req, res) => {
   try {
     const headerData = req.body.headerData;
-    console.log("headerData", headerData)
     const productArrayData = req.body.productArrayData;
     const footerData = req.body.footerData;
 
-    wh_dpbModel.create({
-      refno: headerData.refno,
-      rdate: headerData.rdate,
-      branch_code: headerData.branch_code,
-      trdate: headerData.trdate,
-      monthh: headerData.monthh,
-      myear: headerData.myear,
-      user_code: headerData.user_code,
-      taxable: headerData.taxable,
-      nontaxable: headerData.nontaxable,
-      total: footerData.total
-    })
-      .then(() => {
-        console.log("THEN")
-        console.log(productArrayData)
-        wh_dpbdtModel.bulkCreate(productArrayData)
-      })
-    res.status(200).send({ result: true })
+    // เริ่ม transaction
+    const t = await sequelize.transaction();
+
+    try {
+      // สร้าง WH_DPB record
+      await wh_dpbModel.create({
+        refno: headerData.refno,
+        rdate: headerData.rdate,
+        branch_code: headerData.branch_code,
+        trdate: headerData.trdate,
+        monthh: headerData.monthh,
+        myear: headerData.myear,
+        user_code: headerData.user_code,
+        taxable: headerData.taxable,
+        nontaxable: headerData.nontaxable,
+        total: footerData.total
+      }, { transaction: t });
+
+      // สร้าง WH_DPBDT records
+      await wh_dpbdtModel.bulkCreate(productArrayData, { transaction: t });
+
+      // ลด lotno ลง 1 สำหรับแต่ละ product
+      for (const item of productArrayData) {
+        await Tbl_product.decrement('lotno', {
+          by: 1,
+          where: { product_code: item.product_code },
+          transaction: t
+        });
+      }
+
+      // Commit transaction
+      await t.commit();
+      res.status(200).send({ result: true });
+
+    } catch (error) {
+      // Rollback ถ้าเกิด error
+      await t.rollback();
+      throw error;
+    }
+
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log(error);
+    res.status(500).send({ message: error.message });
   }
 };
 

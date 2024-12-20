@@ -10,9 +10,7 @@ const {
 
 exports.addWh_rfk = async (req, res) => {
   try {
-    const headerData = req.body.headerData;
-    const productArrayData = req.body.productArrayData;
-    const footerData = req.body.footerData;
+    const { headerData, productArrayData, footerData } = req.body;
 
     const t = await sequelize.transaction();
 
@@ -20,7 +18,7 @@ exports.addWh_rfk = async (req, res) => {
       // Create WH_RFK record
       await wh_rfkModel.create({
         refno: headerData.refno,
-        rdate: headerData.rdate,
+        rdate: headerData.rdate, 
         kitchen_code: headerData.kitchen_code,
         trdate: headerData.trdate,
         monthh: headerData.monthh,
@@ -34,12 +32,23 @@ exports.addWh_rfk = async (req, res) => {
       // Create WH_RFKDT records
       await wh_rfkdtModel.bulkCreate(productArrayData, { transaction: t });
 
+      // เพิ่มส่วนนี้เพื่อ increment lotno
+      for (const item of productArrayData) {
+        await Tbl_product.increment('lotno', {
+          by: 1,
+          where: { product_code: item.product_code },
+          transaction: t
+        });
+      }
+
       await t.commit();
       res.status(200).send({ result: true });
+
     } catch (error) {
       await t.rollback();
       throw error;
     }
+
   } catch (error) {
     console.log(error);
     res.status(500).send({ message: error.message });

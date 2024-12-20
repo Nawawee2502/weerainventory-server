@@ -29,6 +29,9 @@ module.exports = (sequelize, DataTypes) => {
       tax1: {
         type: DataTypes.STRING(10),
       },
+      lotno: {
+        type: DataTypes.INTEGER(10),
+      }
     },
     {
       freezeTableName: true,
