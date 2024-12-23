@@ -6,6 +6,7 @@ const {
   Wh_rfk: wh_rfkModel,
   Wh_rfkdt: wh_rfkdtModel,
   Tbl_unit: unitModel,
+  Wh_product_lotno
 } = require("../models/mainModel");
 
 exports.addWh_rfk = async (req, res) => {
@@ -15,7 +16,7 @@ exports.addWh_rfk = async (req, res) => {
     const t = await sequelize.transaction();
 
     try {
-      // Create WH_RFK record
+      // 1. Create WH_RFK record
       await wh_rfkModel.create({
         refno: headerData.refno,
         rdate: headerData.rdate, 
@@ -29,20 +30,46 @@ exports.addWh_rfk = async (req, res) => {
         total: footerData.total
       }, { transaction: t });
 
-      // Create WH_RFKDT records
+      // 2. Create WH_RFKDT records
       await wh_rfkdtModel.bulkCreate(productArrayData, { transaction: t });
 
-      // เพิ่มส่วนนี้เพื่อ increment lotno
+      // 3. สำหรับแต่ละสินค้า
       for (const item of productArrayData) {
-        await Tbl_product.increment('lotno', {
-          by: 1,
+        // ดึงค่า lotno ปัจจุบัน
+        const product = await Tbl_product.findOne({
           where: { product_code: item.product_code },
+          attributes: ['lotno'],
           transaction: t
         });
+
+        const newLotno = (product?.lotno || 0) + 1;
+
+        // เพิ่มข้อมูลใน wh_product_lotno
+        await Wh_product_lotno.create({
+          product_code: item.product_code,
+          lotno: newLotno,
+          unit_code: item.unit_code,
+          qty: Number(item.amt) || 0,
+          uprice: Number(item.uprice),
+          refno: headerData.refno,
+          qty_use: 0.00
+        }, { transaction: t });
+
+        // อัพเดท lotno
+        await Tbl_product.update(
+          { lotno: newLotno },
+          { 
+            where: { product_code: item.product_code },
+            transaction: t 
+          }
+        );
       }
 
       await t.commit();
-      res.status(200).send({ result: true });
+      res.status(200).send({ 
+        result: true,
+        message: 'Created successfully'
+      });
 
     } catch (error) {
       await t.rollback();

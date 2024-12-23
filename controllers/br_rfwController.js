@@ -17,16 +17,16 @@ exports.addBr_rfw = async (req, res) => {
     // console.log("footerData", footerData)
 
     Br_rfwModel.create({
-        refno: headerData.refno,
-        rdate: headerData.rdate,
-        branch_code: headerData.branch_code,
-        trdate: headerData.trdate,
-        monthh: headerData.monthh,
-        myear: headerData.myear,
-        user_code: headerData.user_code,
-        taxable: footerData.taxable,
-        nontaxable: footerData.nontaxable,
-        total: footerData.total,
+      refno: headerData.refno,
+      rdate: headerData.rdate,
+      branch_code: headerData.branch_code,
+      trdate: headerData.trdate,
+      monthh: headerData.monthh,
+      myear: headerData.myear,
+      user_code: headerData.user_code,
+      taxable: footerData.taxable,
+      nontaxable: footerData.nontaxable,
+      total: footerData.total,
     })
       .then(() => {
         // console.log("THEN")
@@ -89,9 +89,9 @@ exports.Br_rfwAllrdate = async (req, res) => {
       wherebranch = { $like: '%' + branch_name + '%' };
 
     const wheresupplier = { supplier_name: { [Op.like]: '%', } };
-      if (supplier_name)
-        wheresupplier = { $like: '%' + supplier_name + '%' };
-    
+    if (supplier_name)
+      wheresupplier = { $like: '%' + supplier_name + '%' };
+
     const Br_rfwShow = await Br_rfwModel.findAll({
       include: [
         {
@@ -120,23 +120,112 @@ exports.Br_rfwAllrdate = async (req, res) => {
 
 exports.Br_rfwAlljoindt = async (req, res) => {
   try {
-    // const { offset, limit } = req.body;
+    const { offset, limit } = req.body;
+    const { rdate } = req.body;
+    const { rdate1, rdate2 } = req.body;
+    const { branch_code, product_code } = req.body;
+    const { Op } = require("sequelize");
 
-    const Br_rfwShow = await Br_rfwModel.findAll({
+    let whereClause = {};
+
+    // Add date filter conditions
+    if (rdate) {
+      whereClause.rdate = rdate;
+    }
+
+    if (rdate1 && rdate2) {
+      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    }
+
+    // Add branch filter condition
+    if (branch_code && branch_code !== '') {
+      whereClause.branch_code = branch_code;
+    }
+
+    // Find headers first
+    let br_rfw_headers = await Br_rfwModel.findAll({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'branch_code', 'taxable', 'nontaxable',
+        'total', 'user_code', 'created_at'
+      ],
       include: [
         {
-          model: Br_rfwdtModel,
-          // as: "postoposdt",
-          // required: true,
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          required: false
         },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
       ],
-      // where: { refno: 'WPOS2410013' }
-      // offset:offset,limit:limit 
+      where: whereClause,
+      order: [['refno', 'ASC']],
+      offset: offset,
+      limit: limit
     });
-    res.status(200).send({ result: true, data: Br_rfwShow })
+
+    // If headers found, get their details
+    if (br_rfw_headers.length > 0) {
+      const refnos = br_rfw_headers.map(header => header.refno);
+
+      let whereDetailClause = {
+        refno: refnos
+      };
+
+      // Add product search condition if provided
+      if (product_code && product_code !== '') {
+        whereDetailClause = {
+          refno: refnos,
+          '$tbl_product.product_name$': { [Op.like]: `%${product_code}%` }
+        };
+      }
+
+      // Get details for all headers
+      const details = await Br_rfwdtModel.findAll({
+        where: whereDetailClause,
+        include: [
+          {
+            model: Tbl_product,
+            attributes: ['product_code', 'product_name'],
+            required: true
+          },
+          {
+            model: unitModel,
+            attributes: ['unit_code', 'unit_name'],
+            required: false
+          }
+        ]
+      });
+
+      // Group details by refno
+      const detailsByRefno = {};
+      details.forEach(detail => {
+        if (!detailsByRefno[detail.refno]) {
+          detailsByRefno[detail.refno] = [];
+        }
+        detailsByRefno[detail.refno].push(detail);
+      });
+
+      // Combine headers with their details
+      br_rfw_headers = br_rfw_headers.map(header => {
+        const headerData = header.toJSON();
+        headerData.br_rfwdts = detailsByRefno[header.refno] || [];
+        return headerData;
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: br_rfw_headers
+    });
+
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log("Error in Br_rfwAlljoindt:", error);
+    res.status(500).send({ message: error.message });
   }
 };
 

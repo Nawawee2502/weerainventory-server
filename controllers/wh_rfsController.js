@@ -7,15 +7,13 @@ const {
   Wh_rfs,
   Wh_rfsdt,
   Tbl_unit,
-  Wh_stockcard
+  Wh_product_lotno
 } = require("../models/mainModel");
-
 
 exports.addWh_rfs = async (req, res) => {
   try {
     const { headerData, productArrayData, footerData } = req.body;
-    
-    // Log ข้อมูลที่ได้รับ
+
     console.log('Received Data:', {
       headerData,
       productArrayData,
@@ -64,16 +62,39 @@ exports.addWh_rfs = async (req, res) => {
           })),
           { transaction: t }
         );
-        
+
         console.log('Created details:', detailsResult);
 
-        // 3. อัพเดท lotno
+        // 3. สำหรับแต่ละสินค้า
         for (const item of productArrayData) {
-          await Tbl_product.increment('lotno', {
-            by: 1,
+          // ดึงค่า lotno ปัจจุบัน
+          const product = await Tbl_product.findOne({
             where: { product_code: item.product_code },
+            attributes: ['lotno'],
             transaction: t
           });
+
+          const newLotno = (product?.lotno || 0) + 1;
+
+          // เพิ่มข้อมูลใน wh_product_lotno
+          await Wh_product_lotno.create({
+            product_code: item.product_code,
+            lotno: newLotno,
+            unit_code: item.unit_code,
+            qty: Number(item.amt) || 0,
+            uprice: Number(item.uprice),
+            refno: headerData.refno,  // ใช้ refno จาก headerData
+            qty_use: 0.00
+          }, { transaction: t });
+
+          // อัพเดท lotno
+          await Tbl_product.update(
+            { lotno: newLotno },
+            {
+              where: { product_code: item.product_code },
+              transaction: t
+            }
+          );
         }
       }
 

@@ -1,11 +1,34 @@
 const Wh_stockcardModel = require("../models/mainModel").Wh_stockcard;
-const { Tbl_product, Tbl_unit } = require("../models/mainModel")
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
+const Wh_product_lotnoModel = require("../models/mainModel").Wh_product_lotno;
+const { Tbl_product, Tbl_unit } = require("../models/mainModel");
+const { sequelize } = require("../models/mainModel");
+
 
 exports.addWh_stockcard = async (req, res) => {
+  const t = await sequelize.transaction();
+
   try {
-    Wh_stockcardModel.create({
+    // Check for existing record with same product_code and dates
+    const existingRecord = await Wh_stockcardModel.findOne({
+      where: {
+        product_code: req.body.product_code,
+        rdate: req.body.rdate,
+        trdate: req.body.trdate
+      },
+      transaction: t
+    });
+
+    if (existingRecord) {
+      await t.rollback();
+      return res.status(400).send({
+        result: false,
+        message: `This product has already been added on ${req.body.rdate}`,
+        type: 'DUPLICATE_RECORD'
+      });
+    }
+
+    // 1. Create stockcard record
+    await Wh_stockcardModel.create({
       myear: req.body.myear,
       monthh: req.body.monthh,
       product_code: req.body.product_code,
@@ -22,15 +45,45 @@ exports.addWh_stockcard = async (req, res) => {
       in1_amt: req.body.in1_amt,
       out1_amt: req.body.out1_amt,
       upd1_amt: req.body.upd1_amt,
-    })
-    res.status(200).send({ result: true })
+    }, { transaction: t });
+
+    // 2. Get current lotno from product
+    const product = await Tbl_product.findOne({
+      where: { product_code: req.body.product_code },
+      attributes: ['lotno'],
+      transaction: t
+    });
+
+    const newLotno = (product?.lotno || 0) + 1;
+
+    // 3. Create product lotno record
+    await Wh_product_lotnoModel.create({
+      product_code: req.body.product_code,
+      lotno: newLotno,
+      unit_code: req.body.unit_code,
+      qty: req.body.beg1_amt || 0,
+      uprice: req.body.uprice,
+      refno: req.body.refno,
+      qty_use: 0.00
+    }, { transaction: t });
+
+    // 4. Update lotno in product table
+    await Tbl_product.update(
+      { lotno: newLotno },
+      {
+        where: { product_code: req.body.product_code },
+        transaction: t
+      }
+    );
+
+    await t.commit();
+    res.status(200).send({ result: true });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    await t.rollback();
+    console.log(error);
+    res.status(500).send({ message: error.message });
   }
-
 };
-
 exports.updateWh_stockcard = async (req, res) => {
   try {
     // Log request body
