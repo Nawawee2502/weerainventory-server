@@ -84,7 +84,8 @@ exports.addWh_rfs = async (req, res) => {
             qty: Number(item.amt) || 0,
             uprice: Number(item.uprice),
             refno: headerData.refno,  // ใช้ refno จาก headerData
-            qty_use: 0.00
+            qty_use: 0.00,
+            rdate: headerData.rdate 
           }, { transaction: t });
 
           // อัพเดท lotno

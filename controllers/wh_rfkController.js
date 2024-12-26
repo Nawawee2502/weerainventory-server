@@ -19,7 +19,7 @@ exports.addWh_rfk = async (req, res) => {
       // 1. Create WH_RFK record
       await wh_rfkModel.create({
         refno: headerData.refno,
-        rdate: headerData.rdate, 
+        rdate: headerData.rdate,
         kitchen_code: headerData.kitchen_code,
         trdate: headerData.trdate,
         monthh: headerData.monthh,
@@ -52,21 +52,22 @@ exports.addWh_rfk = async (req, res) => {
           qty: Number(item.amt) || 0,
           uprice: Number(item.uprice),
           refno: headerData.refno,
-          qty_use: 0.00
+          qty_use: 0.00,
+          rdate: headerData.rdate
         }, { transaction: t });
 
         // อัพเดท lotno
         await Tbl_product.update(
           { lotno: newLotno },
-          { 
+          {
             where: { product_code: item.product_code },
-            transaction: t 
+            transaction: t
           }
         );
       }
 
       await t.commit();
-      res.status(200).send({ 
+      res.status(200).send({
         result: true,
         message: 'Created successfully'
       });
