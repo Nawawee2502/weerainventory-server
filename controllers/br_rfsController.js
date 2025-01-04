@@ -3,11 +3,9 @@ const {
   sequelize,
   Tbl_product,
   Tbl_branch,
-  User,
-  Br_rfs,
-  Br_rfsdt,
-  Tbl_unit,
-  Br_stockcard
+  User,  // Add this
+  Br_rfs: br_rfsModel,
+  Br_rfsdt: br_rfsdtModel
 } = require("../models/mainModel");
 
 exports.addBr_rfs = async (req, res) => {

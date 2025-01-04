@@ -1,10 +1,12 @@
-const Br_rfwModel = require("../models/mainModel").Br_rfw;
-const Br_rfwdtModel = require("../models/mainModel").Br_rfwdt;
-const unitModel = require("../models/mainModel").Tbl_unit;
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
-const { Tbl_supplier, sequelize, Tbl_product, Tbl_kitchen } = require("../models/mainModel");
-const { Tbl_branch } = require("../models/mainModel");
+const {
+  Tbl_supplier,
+  sequelize,
+  Tbl_product,
+  Tbl_branch,
+  User,  // Add this
+  Br_rfw: Br_rfwModel,  // Use consistent naming
+  Br_rfwdt: Br_rfwdtModel
+} = require("../models/mainModel");
 
 exports.addBr_rfw = async (req, res) => {
   try {
