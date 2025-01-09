@@ -3,9 +3,10 @@ const {
   sequelize,
   Tbl_product,
   Tbl_branch,
-  User,  // Add this
+  User,
   Br_rfs: br_rfsModel,
-  Br_rfsdt: br_rfsdtModel
+  Br_rfsdt: br_rfsdtModel,
+  Tbl_unit
 } = require("../models/mainModel");
 
 exports.addBr_rfs = async (req, res) => {
@@ -18,7 +19,7 @@ exports.addBr_rfs = async (req, res) => {
 
     try {
       // Create BR_RFS record
-      await Br_rfs.create({
+      await br_rfsModel.create({
         refno: headerData.refno,
         rdate: headerData.rdate,
         supplier_code: headerData.supplier_code,
@@ -30,59 +31,10 @@ exports.addBr_rfs = async (req, res) => {
         taxable: footerData.taxable,
         nontaxable: footerData.nontaxable,
         total: footerData.total,
-        instant_saving: footerData.instant_saving,
-        delivery_surcharge: footerData.delivery_surcharge,
-        sale_tax: footerData.sale_tax,
-        total_due: footerData.total_due,
       }, { transaction: t });
 
       // Create BR_RFSDT records
-      await Br_rfsdt.bulkCreate(productArrayData, { transaction: t });
-
-      // Get all products with conversion factors
-      const productCodes = productArrayData.map(p => p.product_code);
-      const products = await Tbl_product.findAll({
-        where: { product_code: productCodes },
-        attributes: ['product_code', 'unit_conversion_factor', 'bulk_unit_code', 'retail_unit_code'],
-        transaction: t
-      });
-
-      // Create stock card records
-      const stockcardRecords = productArrayData.map(product => {
-        const productDetails = products.find(p => p.product_code === product.product_code);
-
-        let amount = parseFloat(product.amt) || 0;
-        let quantity = amount;  // Default for retail unit
-        let retailPrice = Number(product.uprice) || 0;
-
-        // Convert quantity to retail units if input is in bulk units
-        if (product.unit_code === productDetails?.bulk_unit_code) {
-          const conversion = parseInt(productDetails.unit_conversion_factor) || 1;
-          quantity = amount * conversion;
-          retailPrice = retailPrice / conversion;  // Convert price to retail unit price
-        }
-
-        return {
-          refno: headerData.refno,
-          rdate: headerData.rdate,
-          trdate: headerData.trdate,
-          myear: headerData.myear,
-          monthh: headerData.monthh,
-          product_code: product.product_code,
-          unit_code: productDetails?.retail_unit_code || product.unit_code,
-          beg1: 0,
-          in1: quantity,  // Use converted quantity for bulk units
-          out1: 0,
-          upd1: 0,
-          uprice: retailPrice,  // Always store retail unit price
-          beg1_amt: 0,
-          in1_amt: amount * product.uprice,  // Use original amount and price
-          out1_amt: 0,
-          upd1_amt: 0
-        };
-      });
-
-      await Br_stockcard.bulkCreate(stockcardRecords, { transaction: t });
+      await br_rfsdtModel.bulkCreate(productArrayData, { transaction: t });
 
       await t.commit();
       res.status(200).send({ result: true });
@@ -98,7 +50,7 @@ exports.addBr_rfs = async (req, res) => {
 
 exports.updateBr_rfs = async (req, res) => {
   try {
-    Br_rfs.update(
+    br_rfsModel.update(
       {
         rdate: req.body.rdate,
         trdate: req.body.trdate,
@@ -109,10 +61,6 @@ exports.updateBr_rfs = async (req, res) => {
         taxable: req.body.taxable,
         nontaxable: req.body.nontaxable,
         total: req.body.total,
-        instant_saving: req.body.instant_saving,
-        delivery_surcharge: req.body.delivery_surcharge,
-        sale_tax: req.body.sale_tax,
-        total_due: req.body.total_due,
         user_code: req.body.user_code,
       },
       { where: { refno: req.body.refno } }
@@ -126,7 +74,7 @@ exports.updateBr_rfs = async (req, res) => {
 
 exports.deleteBr_rfs = async (req, res) => {
   try {
-    Br_rfs.destroy(
+    br_rfsModel.destroy(
       { where: { refno: req.body.refno } }
     );
     res.status(200).send({ result: true })
@@ -151,7 +99,7 @@ exports.Br_rfsAllrdate = async (req, res) => {
       wherebranch = { branch_name: { [Op.like]: `%${branch_name}%` } };
     }
 
-    const br_rfsShow = await Br_rfs.findAll({
+    const br_rfsShow = await br_rfsModel.findAll({
       include: [
         {
           model: Tbl_supplier,
@@ -196,12 +144,11 @@ exports.Br_rfsAlljoindt = async (req, res) => {
       whereClause.branch_code = branch_code;
     }
 
-    let br_rfs_headers = await Br_rfs.findAll({
+    let br_rfs_headers = await br_rfsModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'supplier_code', 'branch_code', 'taxable', 'nontaxable',
-        'total', 'instant_saving', 'delivery_surcharge',
-        'sale_tax', 'total_due', 'user_code', 'created_at'
+        'total', 'user_code', 'created_at', 'updated_at'
       ],
       include: [
         {
@@ -241,7 +188,7 @@ exports.Br_rfsAlljoindt = async (req, res) => {
         };
       }
 
-      const details = await Br_rfsdt.findAll({
+      const details = await br_rfsdtModel.findAll({
         where: whereDetailClause,
         include: [
           {
@@ -287,10 +234,10 @@ exports.Br_rfsByRefno = async (req, res) => {
   try {
     const { refno } = req.body;
 
-    const br_rfsShow = await Br_rfs.findOne({
+    const br_rfsShow = await br_rfsModel.findOne({
       include: [
         {
-          model: Br_rfsdt,
+          model: br_rfsdtModel,
           include: [{
             model: Tbl_product,
             include: [
@@ -320,7 +267,7 @@ exports.Br_rfsByRefno = async (req, res) => {
 exports.countBr_rfs = async (req, res) => {
   try {
     const { Op } = require("sequelize");
-    const amount = await Br_rfs.count({
+    const amount = await br_rfsModel.count({
       where: {
         refno: {
           [Op.gt]: 0,
@@ -339,7 +286,7 @@ exports.searchBr_rfsrefno = async (req, res) => {
     const { Op } = require("sequelize");
     const { refno } = req.body;
 
-    const br_rfsShow = await Br_rfs.findAll({
+    const br_rfsShow = await br_rfsModel.findAll({
       where: {
         refno: {
           [Op.like]: `%${refno}%`
@@ -355,7 +302,7 @@ exports.searchBr_rfsrefno = async (req, res) => {
 
 exports.Br_rfsrefno = async (req, res) => {
   try {
-    const refno = await Br_rfs.findOne({
+    const refno = await br_rfsModel.findOne({
       order: [['refno', 'DESC']],
     });
     res.status(200).send({ result: true, data: refno })
@@ -367,7 +314,7 @@ exports.Br_rfsrefno = async (req, res) => {
 
 exports.searchBr_rfsRunno = async (req, res) => {
   try {
-    const br_rfsShow = await Br_rfs.findAll({
+    const br_rfsShow = await br_rfsModel.findAll({
       where: {
         myear: req.body.myear,
         monthh: req.body.monthh

@@ -1,4 +1,5 @@
 const {
+  Wh_stockcard,
   Tbl_supplier,
   sequelize,
   Tbl_product,
@@ -11,6 +12,8 @@ const {
 } = require("../models/mainModel");
 
 exports.addWh_rfs = async (req, res) => {
+  const t = await sequelize.transaction();
+
   try {
     const { headerData, productArrayData, footerData } = req.body;
 
@@ -20,7 +23,14 @@ exports.addWh_rfs = async (req, res) => {
       footerData
     });
 
-    const t = await sequelize.transaction();
+    // ตรวจสอบข้อมูลที่จำเป็น
+    if (!headerData.refno || !headerData.supplier_code || !headerData.branch_code) {
+      throw new Error('Missing required fields in header data');
+    }
+
+    if (!Array.isArray(productArrayData) || productArrayData.length === 0) {
+      throw new Error('Product data is required');
+    }
 
     try {
       // 1. สร้าง WH_RFS record
@@ -65,9 +75,44 @@ exports.addWh_rfs = async (req, res) => {
 
         console.log('Created details:', detailsResult);
 
-        // 3. สำหรับแต่ละสินค้า
+        // 3. บันทึกข้อมูลลง stockcard
         for (const item of productArrayData) {
-          // ดึงค่า lotno ปัจจุบัน
+          // ตรวจสอบข้อมูลซ้ำใน stockcard
+          const existingStockcard = await Wh_stockcard.findOne({
+            where: {
+              product_code: item.product_code,
+              refno: headerData.refno,
+              rdate: headerData.rdate
+            },
+            transaction: t
+          });
+
+          if (existingStockcard) {
+            throw new Error(`Duplicate stockcard record for product ${item.product_code}`);
+          }
+
+          // บันทึกข้อมูลใน stockcard
+          await Wh_stockcard.create({
+            myear: headerData.myear,
+            monthh: headerData.monthh,
+            product_code: item.product_code,
+            unit_code: item.unit_code,
+            refno: headerData.refno,
+            rdate: headerData.rdate,
+            trdate: headerData.trdate,
+            lotno: 0,
+            beg1: Number(item.qty),
+            in1: 0,
+            out1: 0,
+            upd1: 0,
+            uprice: Number(item.uprice),
+            beg1_amt: Number(item.amt),
+            in1_amt: 0,
+            out1_amt: 0,
+            upd1_amt: 0
+          }, { transaction: t });
+
+          // 4. จัดการ lotno
           const product = await Tbl_product.findOne({
             where: { product_code: item.product_code },
             attributes: ['lotno'],
@@ -76,19 +121,19 @@ exports.addWh_rfs = async (req, res) => {
 
           const newLotno = (product?.lotno || 0) + 1;
 
-          // เพิ่มข้อมูลใน wh_product_lotno
+          // บันทึก product lotno
           await Wh_product_lotno.create({
             product_code: item.product_code,
             lotno: newLotno,
             unit_code: item.unit_code,
             qty: Number(item.amt) || 0,
             uprice: Number(item.uprice),
-            refno: headerData.refno,  // ใช้ refno จาก headerData
+            refno: headerData.refno,
             qty_use: 0.00,
-            rdate: headerData.rdate 
+            rdate: headerData.rdate
           }, { transaction: t });
 
-          // อัพเดท lotno
+          // อัพเดท lotno ในตาราง product
           await Tbl_product.update(
             { lotno: newLotno },
             {
@@ -115,7 +160,8 @@ exports.addWh_rfs = async (req, res) => {
     console.error('Server Error:', error);
     res.status(500).json({
       result: false,
-      message: error.message || 'Internal server error'
+      message: error.message || 'Internal server error',
+      errorDetail: error.stack
     });
   }
 };
@@ -200,11 +246,15 @@ exports.Wh_rfsAllrdate = async (req, res) => {
 exports.Wh_rfsAlljoindt = async (req, res) => {
   try {
     const { offset, limit } = req.body;
-    const { rdate1, rdate2 } = req.body;
+    const { rdate1, rdate2, rdate } = req.body;
     const { supplier_code, branch_code, product_code } = req.body;
     const { Op } = require("sequelize");
 
     let whereClause = {};
+
+    if (rdate) {
+      whereClause.rdate = rdate;
+    }
 
     if (rdate1 && rdate2) {
       whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
@@ -341,18 +391,27 @@ exports.Wh_rfsByRefno = async (req, res) => {
 
 exports.countWh_rfs = async (req, res) => {
   try {
+    const { rdate } = req.body;
     const { Op } = require("sequelize");
+
+    let whereClause = {
+      refno: {
+        [Op.gt]: 0,
+      }
+    };
+
+    if (rdate) {
+      whereClause.rdate = rdate;
+    }
+
     const amount = await Wh_rfs.count({
-      where: {
-        refno: {
-          [Op.gt]: 0,
-        },
-      },
+      where: whereClause
     });
-    res.status(200).send({ result: true, data: amount })
+
+    res.status(200).send({ result: true, data: amount });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log(error);
+    res.status(500).send({ message: error });
   }
 };
 
