@@ -8,10 +8,9 @@ exports.addWh_stockcard = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    // Log the incoming request
     console.log("Incoming request body:", req.body);
 
-    // Check for existing record with same product_code and dates
+    // Check for existing record
     const existingRecord = await Wh_stockcardModel.findOne({
       where: {
         product_code: req.body.product_code,
@@ -30,7 +29,15 @@ exports.addWh_stockcard = async (req, res) => {
       });
     }
 
-    // 1. Create stockcard record
+    // Calculate balance and balance_amount
+    const balance = (Number(req.body.beg1) || 0) +
+      (Number(req.body.in1) || 0) -
+      (Number(req.body.out1) || 0) +
+      (Number(req.body.upd1) || 0);
+
+    const balance_amount = balance * (Number(req.body.uprice) || 0);
+
+    // Create stockcard record with balance fields
     const stockcardRecord = await Wh_stockcardModel.create({
       myear: req.body.myear,
       monthh: req.body.monthh,
@@ -48,48 +55,18 @@ exports.addWh_stockcard = async (req, res) => {
       in1_amt: req.body.in1_amt,
       out1_amt: req.body.out1_amt,
       upd1_amt: req.body.upd1_amt,
+      balance: balance,
+      balance_amount: balance_amount
     }, { transaction: t });
 
     console.log("Created stockcard record:", stockcardRecord);
 
-    // 2. Get current lotno from product
-    const product = await Tbl_product.findOne({
-      where: { product_code: req.body.product_code },
-      attributes: ['lotno'],
-      transaction: t
+    await t.commit();
+    res.status(200).send({
+      result: true,
+      message: 'Created successfully'
     });
 
-    const newLotno = (product?.lotno || 0) + 1;
-
-    // Log the data that will be saved to product lotno
-    const lotnoData = {
-      product_code: req.body.product_code,
-      lotno: newLotno,
-      unit_code: req.body.unit_code,
-      qty: req.body.beg1_amt || 0,
-      uprice: req.body.uprice,
-      refno: req.body.refno,
-      qty_use: 0.00,
-      rdate: req.body.rdate
-    };
-    console.log("Product lotno data to be saved:", lotnoData);
-
-    // 3. Create product lotno record
-    const lotnoRecord = await Wh_product_lotnoModel.create(lotnoData, { transaction: t });
-
-    console.log("Created product lotno record:", lotnoRecord);
-
-    // 4. Update lotno in product table
-    await Tbl_product.update(
-      { lotno: newLotno },
-      {
-        where: { product_code: req.body.product_code },
-        transaction: t
-      }
-    );
-
-    await t.commit();
-    res.status(200).send({ result: true });
   } catch (error) {
     await t.rollback();
     console.log("Error in addWh_stockcard:", error);
@@ -102,6 +79,14 @@ exports.updateWh_stockcard = async (req, res) => {
 
   try {
     console.log("Update Request Body:", req.body);
+
+    // Calculate new balance and balance_amount
+    const balance = (Number(req.body.beg1) || 0) +
+      (Number(req.body.in1) || 0) -
+      (Number(req.body.out1) || 0) +
+      (Number(req.body.upd1) || 0);
+
+    const balance_amount = balance * (Number(req.body.uprice) || 0);
 
     const updateResult = await Wh_stockcardModel.update(
       {
@@ -117,7 +102,9 @@ exports.updateWh_stockcard = async (req, res) => {
         beg1_amt: req.body.beg1_amt,
         in1_amt: req.body.in1_amt,
         out1_amt: req.body.out1_amt,
-        upd1_amt: req.body.upd1_amt
+        upd1_amt: req.body.upd1_amt,
+        balance: balance,
+        balance_amount: balance_amount
       },
       {
         where: {
@@ -132,23 +119,6 @@ exports.updateWh_stockcard = async (req, res) => {
       }
     );
 
-    await Wh_product_lotnoModel.update(
-      {
-        unit_code: req.body.unit_code,
-        qty: req.body.beg1_amt || 0,
-        uprice: req.body.uprice,
-        rdate: req.body.rdate
-      },
-      {
-        where: {
-          refno: req.body.refno,
-          product_code: req.body.product_code,
-          rdate: req.body.rdate
-        },
-        transaction: t
-      }
-    );
-
     if (updateResult[0] === 0) {
       await t.rollback();
       return res.status(404).send({
@@ -158,13 +128,18 @@ exports.updateWh_stockcard = async (req, res) => {
     }
 
     await t.commit();
-    res.status(200).send({ result: true, updatedRows: updateResult[0] });
+    res.status(200).send({
+      result: true,
+      updatedRows: updateResult[0]
+    });
+
   } catch (error) {
     await t.rollback();
     console.log("Update Error:", error);
     res.status(500).send({ message: error.message });
   }
 };
+
 
 
 exports.deleteWh_stockcard = async (req, res) => {
@@ -223,25 +198,21 @@ exports.deleteWh_stockcard = async (req, res) => {
 
 exports.Query_Wh_stockcard = async (req, res) => {
   try {
-    const { offset, limit, rdate, rdate1, rdate2, product_code, product_name } = req.body;
+    const { offset, limit, rdate, rdate1, rdate2, product_code, product_name, trdate, refno } = req.body;
     const { Op } = require("sequelize");
 
-    // Create base where clause
     let whereClause = {};
 
-    // Handle single date or date range
     if (rdate1 && rdate2) {
       whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
     } else if (rdate) {
       whereClause.rdate = rdate;
     }
 
-    // Add product code condition if provided
     if (product_code) {
       whereClause.product_code = product_code;
     }
 
-    // Create product search condition
     let productWhereClause = {};
     if (product_name) {
       productWhereClause.product_name = {
@@ -249,7 +220,7 @@ exports.Query_Wh_stockcard = async (req, res) => {
       };
     }
 
-    const Wh_stockcardShow = await Wh_stockcardModel.findAll({
+    const stockcardShow = await Wh_stockcardModel.findAll({
       where: whereClause,
       include: [
         {
@@ -264,15 +235,19 @@ exports.Query_Wh_stockcard = async (req, res) => {
           required: false
         }
       ],
-      order: [['refno', 'ASC']],
+      order: [
+        ['trdate', 'ASC'],
+        ['refno', 'ASC']
+      ],
       offset: offset,
       limit: limit
     });
 
     res.status(200).send({
       result: true,
-      data: Wh_stockcardShow
+      data: stockcardShow
     });
+
   } catch (error) {
     console.log("Error in Query_Wh_stockcard:", error);
     res.status(500).send({
@@ -284,22 +259,24 @@ exports.Query_Wh_stockcard = async (req, res) => {
 
 exports.countWh_stockcard = async (req, res) => {
   try {
-    const { rdate, product_name } = req.body;
+    const { rdate, trdate, product_name, refno } = req.body;  // เพิ่ม trdate และ refno
     const { Op } = require("sequelize");
 
-    // สร้าง where clause สำหรับการนับ
     let whereClause = {};
-
-    // เพิ่มเงื่อนไขวันที่ถ้ามี
     if (rdate) {
       whereClause.rdate = rdate;
+    }
+    if (trdate) {  // เพิ่มเงื่อนไข trdate
+      whereClause.trdate = trdate;
+    }
+    if (refno) {   // เพิ่มเงื่อนไข refno
+      whereClause.refno = refno;
     }
 
     const countOptions = {
       where: whereClause
     };
 
-    // เพิ่มเงื่อนไขค้นหาตามชื่อสินค้าถ้ามี
     if (product_name) {
       countOptions.include = [{
         model: Tbl_product,
@@ -313,14 +290,10 @@ exports.countWh_stockcard = async (req, res) => {
       }];
     }
 
-    // นับจำนวนตามเงื่อนไขที่กำหนด
     const amount = await Wh_stockcardModel.count(countOptions);
-
     res.status(200).send({ result: true, data: amount });
   } catch (error) {
     console.log("Error in countWh_stockcard:", error);
     res.status(500).send({ message: error.message });
   }
 };
-
-

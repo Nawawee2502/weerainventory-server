@@ -1,75 +1,74 @@
 module.exports = (sequelize, DataTypes) => {
-    const wh_stockcardModel = sequelize.define(
-      "wh_stockcard",
-      {
-        refno: {
-          type: DataTypes.STRING(20),
+    const Wh_stockcardModel = sequelize.define(
+        "wh_stockcard",
+        {
+            myear: {
+                type: DataTypes.STRING(10),
+            },
+            monthh: {
+                type: DataTypes.INTEGER,
+            },
+            product_code: {
+                type: DataTypes.STRING(20),
+            },
+            unit_code: {
+                type: DataTypes.STRING(10),
+            },
+            refno: {
+                type: DataTypes.STRING(20),
+            },
+            rdate: {
+                type: DataTypes.STRING(10),
+            },
+            trdate: {
+                type: DataTypes.STRING(10),
+            },
+            lotno: {
+                type: DataTypes.INTEGER,
+            },
+            beg1: {
+                type: DataTypes.DOUBLE(12, 2),
+            },
+            in1: {
+                type: DataTypes.DOUBLE(12, 2),
+            },
+            out1: {
+                type: DataTypes.DOUBLE(12, 2),
+            },
+            upd1: {
+                type: DataTypes.DOUBLE(12, 2),
+            },
+            uprice: {
+                type: DataTypes.DOUBLE(12, 2),
+            },
+            beg1_amt: {
+                type: DataTypes.DOUBLE(12, 2),
+            },
+            in1_amt: {
+                type: DataTypes.DOUBLE(12, 2),
+            },
+            out1_amt: {
+                type: DataTypes.DOUBLE(12, 2),
+            },
+            upd1_amt: {
+                type: DataTypes.DOUBLE(12, 2),
+            },
+            balance: {
+                type: DataTypes.DOUBLE(12, 2),
+                defaultValue: 0.00
+            },
+            balance_amount: {
+                type: DataTypes.DOUBLE(12, 2),
+                defaultValue: 0.00
+            }
         },
-        rdate: {
-          type: DataTypes.STRING(10),
-        },
-        trdate: {
-            type: DataTypes.STRING(10),
-        },
-        myear: {
-            type: DataTypes.STRING(10),
-        },
-        monthh: {
-            type: DataTypes.INTEGER,
-        },
-        product_code: {
-            type: DataTypes.STRING(10),
-        },
-        // หน่วยเล็กของสินค้าแต่ละตัว แปลงจากหน่วยใหญ่เป็นหน่วยเล็ก ( ถ้าเป็นหน่วยใหญ่ จำนวน * conversion)
-        unit_code: {
-          type: DataTypes.STRING(10),
-        },
-        // ยอดยกมา ( qty ) rfs = 0
-        beg1: {
-            type: DataTypes.DOUBLE(12,2),
-        },
-        // ใบสำคัญรับ (จำนวนสินค้า qty ของเอกสารแต่ละตัว)
-        in1: {
-            type: DataTypes.DOUBLE(12,2),
-        },
-        // ใบสำคัญจ่าย ( จำนวนสินค้า qty เช็คหน่วยนับ ถ้าเป็นหน่วยใหญ่ แปลเป็นหน่วยเล็ก ) rfs = 0
-        out1: {
-            type: DataTypes.DOUBLE(12,2),
-        },
-        // ใบเช็ค stock ( qty ของหน่วยเล็ก กำหนดเป็นหน่วยเล็กเท่านั้น ) rfs = 0
-        upd1: {
-            type: DataTypes.DOUBLE(12,2),
-        },
-        // ราคาต่อหน่วย ของหน่วยเล็ก ถ้าเป็นหน่วยใหญ่เอา conversion มาหาร
-        uprice: {
-            type: DataTypes.DOUBLE(12,2),
-        },
-        // จำนวนเงินของยอดยกมา (หน่วยเล็ก) rfs = 0
-        beg1_amt: {
-            type: DataTypes.DOUBLE(12,2),
-        },
-        // จำนวนเงินของใบสำคัญรับ (หน่วยเล็ก)
-        in1_amt: {
-            type: DataTypes.DOUBLE(12,2),
-        },
-        // ใบสำคัญจ่าย (หน่วยเล็ก) rfs = 0
-        out1_amt: {
-            type: DataTypes.DOUBLE(12,2),
-        },
-        // ใบเช็ค stock (หน่วยเล็ก) rfs = 0
-        upd1_amt: {
-            type: DataTypes.DOUBLE(12,2),
-        },
-      
-      },
-      {
-        freezeTableName: true,
-        // timestamp:false,
-        id: false,
-        createdAt: false,
-        updatedAt: false,
-      }
+        {
+            freezeTableName: true,
+            id: false,
+            createdAt: false,
+            updatedAt: false,
+        }
     );
-    wh_stockcardModel.removeAttribute('id');
-    return wh_stockcardModel;
-  };
+    Wh_stockcardModel.removeAttribute('id');
+    return Wh_stockcardModel;
+};

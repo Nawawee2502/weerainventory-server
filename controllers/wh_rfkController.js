@@ -6,14 +6,15 @@ const {
   Wh_rfk: wh_rfkModel,
   Wh_rfkdt: wh_rfkdtModel,
   Tbl_unit: unitModel,
-  Wh_product_lotno
+  Wh_product_lotno,
+  Wh_stockcard
 } = require("../models/mainModel");
 
 exports.addWh_rfk = async (req, res) => {
+  const t = await sequelize.transaction();
+
   try {
     const { headerData, productArrayData, footerData } = req.body;
-
-    const t = await sequelize.transaction();
 
     try {
       // 1. Create WH_RFK record
@@ -33,9 +34,44 @@ exports.addWh_rfk = async (req, res) => {
       // 2. Create WH_RFKDT records
       await wh_rfkdtModel.bulkCreate(productArrayData, { transaction: t });
 
-      // 3. สำหรับแต่ละสินค้า
+      // 3. Process each product
       for (const item of productArrayData) {
-        // ดึงค่า lotno ปัจจุบัน
+        // Check for duplicate stockcard entry
+        const existingStockcard = await Wh_stockcard.findOne({
+          where: {
+            product_code: item.product_code,
+            refno: headerData.refno,
+            rdate: headerData.rdate
+          },
+          transaction: t
+        });
+
+        if (existingStockcard) {
+          throw new Error(`Duplicate stockcard record for product ${item.product_code}`);
+        }
+
+        // Create stockcard entry
+        await Wh_stockcard.create({
+          myear: headerData.myear,
+          monthh: headerData.monthh,
+          product_code: item.product_code,
+          unit_code: item.unit_code,
+          refno: headerData.refno,
+          rdate: headerData.rdate,
+          trdate: headerData.trdate,
+          lotno: 0,
+          beg1: 0,
+          in1: Number(item.amt),
+          out1: 0,
+          upd1: 0,
+          uprice: Number(item.uprice),
+          beg1_amt: Number(item.amt) * Number(item.uprice),
+          in1_amt: 0,
+          out1_amt: 0,
+          upd1_amt: 0
+        }, { transaction: t });
+
+        // Get current lotno and increment
         const product = await Tbl_product.findOne({
           where: { product_code: item.product_code },
           attributes: ['lotno'],
@@ -44,19 +80,37 @@ exports.addWh_rfk = async (req, res) => {
 
         const newLotno = (product?.lotno || 0) + 1;
 
-        // เพิ่มข้อมูลใน wh_product_lotno
-        await Wh_product_lotno.create({
-          product_code: item.product_code,
-          lotno: newLotno,
-          unit_code: item.unit_code,
-          qty: Number(item.amt) || 0,
-          uprice: Number(item.uprice),
-          refno: headerData.refno,
-          qty_use: 0.00,
-          rdate: headerData.rdate
-        }, { transaction: t });
+        // Check if product lotno already exists
+        const existingLotno = await Wh_product_lotno.findOne({
+          where: {
+            product_code: item.product_code,
+            lotno: newLotno
+          },
+          transaction: t
+        });
 
-        // อัพเดท lotno
+        if (!existingLotno) {
+          // Create new product lotno entry if it doesn't exist
+          await Wh_product_lotno.create({
+            product_code: item.product_code,
+            lotno: newLotno,
+            unit_code: item.unit_code,
+            qty: Number(item.amt) || 0,
+            uprice: Number(item.uprice),
+            refno: headerData.refno,
+            qty_use: 0.00,
+            rdate: headerData.rdate
+          }, { transaction: t });
+        } else {
+          // Update existing product lotno if it exists
+          await existingLotno.update({
+            qty: existingLotno.qty + (Number(item.amt) || 0),
+            uprice: Number(item.uprice),
+            rdate: headerData.rdate
+          }, { transaction: t });
+        }
+
+        // Update product lotno
         await Tbl_product.update(
           { lotno: newLotno },
           {
@@ -78,8 +132,11 @@ exports.addWh_rfk = async (req, res) => {
     }
 
   } catch (error) {
-    console.log(error);
-    res.status(500).send({ message: error.message });
+    console.log("Server Error:", error);
+    res.status(500).send({
+      message: error.message || 'Internal server error',
+      errorDetail: error.stack
+    });
   }
 };
 
@@ -177,7 +234,7 @@ exports.Wh_rfkAlljoindt = async (req, res) => {
         },
         {
           model: User,
-          as: 'user',  // Make sure this matches the association alias
+          as: 'user',
           attributes: ['user_code', 'username'],
           required: false
         }
@@ -319,7 +376,7 @@ exports.Wh_rfkrefno = async (req, res) => {
     const refno = await wh_rfkModel.findOne({
       order: [['refno', 'DESC']],
     });
-    res.status(200).send({ result: true, data: refno }) // ส่งทั้ง object กลับไป
+    res.status(200).send({ result: true, data: refno })
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
