@@ -236,6 +236,8 @@ exports.Query_Wh_stockcard = async (req, res) => {
         }
       ],
       order: [
+        [{ model: Tbl_product }, 'typeproduct_code', 'ASC'], // Order by typeproduct_code instead
+        [{ model: Tbl_product }, 'product_name', 'ASC'],
         ['trdate', 'ASC'],
         ['refno', 'ASC']
       ],

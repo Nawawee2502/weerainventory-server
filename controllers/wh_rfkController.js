@@ -16,8 +16,17 @@ exports.addWh_rfk = async (req, res) => {
   try {
     const { headerData, productArrayData, footerData } = req.body;
 
+    // ตรวจสอบข้อมูลที่จำเป็น
+    if (!headerData.refno || !headerData.kitchen_code) {
+      throw new Error('Missing required fields in header data');
+    }
+
+    if (!Array.isArray(productArrayData) || productArrayData.length === 0) {
+      throw new Error('Product data is required');
+    }
+
     try {
-      // 1. Create WH_RFK record
+      // 1. สร้าง WH_RFK record
       await wh_rfkModel.create({
         refno: headerData.refno,
         rdate: headerData.rdate,
@@ -31,26 +40,63 @@ exports.addWh_rfk = async (req, res) => {
         total: footerData.total
       }, { transaction: t });
 
-      // 2. Create WH_RFKDT records
-      await wh_rfkdtModel.bulkCreate(productArrayData, { transaction: t });
+      // 2. สร้าง detail records
+      await wh_rfkdtModel.bulkCreate(
+        productArrayData.map(item => ({
+          refno: headerData.refno,
+          product_code: item.product_code,
+          qty: Number(item.qty),
+          unit_code: item.unit_code,
+          uprice: Number(item.uprice),
+          tax1: item.tax1,
+          expire_date: item.expire_date,
+          texpire_date: item.texpire_date,
+          temperature1: item.temperature1,
+          amt: Number(item.amt)
+        })),
+        { transaction: t }
+      );
 
-      // 3. Process each product
+      // 3. สร้าง stockcard records และอัพเดท lotno
       for (const item of productArrayData) {
-        // Check for duplicate stockcard entry
-        const existingStockcard = await Wh_stockcard.findOne({
-          where: {
-            product_code: item.product_code,
-            refno: headerData.refno,
-            rdate: headerData.rdate
-          },
+        // หา records ทั้งหมดของสินค้านี้เพื่อคำนวณยอดรวม
+        const stockcardRecords = await Wh_stockcard.findAll({
+          where: { product_code: item.product_code },
+          order: [
+            ['rdate', 'DESC'],
+            ['refno', 'DESC']
+          ],
+          raw: true,
           transaction: t
         });
 
-        if (existingStockcard) {
-          throw new Error(`Duplicate stockcard record for product ${item.product_code}`);
-        }
+        // คำนวณยอดรวมจาก records ที่มีอยู่
+        const totals = stockcardRecords.reduce((acc, record) => {
+          return {
+            beg1: acc.beg1 + Number(record.beg1 || 0),
+            in1: acc.in1 + Number(record.in1 || 0),
+            out1: acc.out1 + Number(record.out1 || 0),
+            upd1: acc.upd1 + Number(record.upd1 || 0),
+            beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
+            in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
+            out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
+            upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
+          };
+        }, {
+          beg1: 0, in1: 0, out1: 0, upd1: 0,
+          beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
+        });
 
-        // Create stockcard entry
+        // คำนวณค่าใหม่
+        const newAmount = Number(item.amt || 0);
+        const newPrice = Number(item.uprice || 0);
+        const newAmountValue = newAmount * newPrice;
+
+        // คำนวณ balance และ balance_amount
+        const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
+        const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
+
+        // สร้าง stockcard record ใหม่
         await Wh_stockcard.create({
           myear: headerData.myear,
           monthh: headerData.monthh,
@@ -61,17 +107,19 @@ exports.addWh_rfk = async (req, res) => {
           trdate: headerData.trdate,
           lotno: 0,
           beg1: 0,
-          in1: Number(item.amt),
+          in1: newAmount,
           out1: 0,
           upd1: 0,
-          uprice: Number(item.uprice),
-          beg1_amt: Number(item.amt) * Number(item.uprice),
-          in1_amt: 0,
+          uprice: newPrice,
+          beg1_amt: 0,
+          in1_amt: newAmountValue,
           out1_amt: 0,
-          upd1_amt: 0
+          upd1_amt: 0,
+          balance: previousBalance + newAmount,
+          balance_amount: previousBalanceAmount + newAmountValue
         }, { transaction: t });
 
-        // Get current lotno and increment
+        // จัดการ lotno
         const product = await Tbl_product.findOne({
           where: { product_code: item.product_code },
           attributes: ['lotno'],
@@ -80,37 +128,19 @@ exports.addWh_rfk = async (req, res) => {
 
         const newLotno = (product?.lotno || 0) + 1;
 
-        // Check if product lotno already exists
-        const existingLotno = await Wh_product_lotno.findOne({
-          where: {
-            product_code: item.product_code,
-            lotno: newLotno
-          },
-          transaction: t
-        });
+        // บันทึก product lotno
+        await Wh_product_lotno.create({
+          product_code: item.product_code,
+          lotno: newLotno,
+          unit_code: item.unit_code,
+          qty: newAmount,
+          uprice: newPrice,
+          refno: headerData.refno,
+          qty_use: 0.00,
+          rdate: headerData.rdate
+        }, { transaction: t });
 
-        if (!existingLotno) {
-          // Create new product lotno entry if it doesn't exist
-          await Wh_product_lotno.create({
-            product_code: item.product_code,
-            lotno: newLotno,
-            unit_code: item.unit_code,
-            qty: Number(item.amt) || 0,
-            uprice: Number(item.uprice),
-            refno: headerData.refno,
-            qty_use: 0.00,
-            rdate: headerData.rdate
-          }, { transaction: t });
-        } else {
-          // Update existing product lotno if it exists
-          await existingLotno.update({
-            qty: existingLotno.qty + (Number(item.amt) || 0),
-            uprice: Number(item.uprice),
-            rdate: headerData.rdate
-          }, { transaction: t });
-        }
-
-        // Update product lotno
+        // อัพเดท lotno ในตาราง product
         await Tbl_product.update(
           { lotno: newLotno },
           {
@@ -121,19 +151,21 @@ exports.addWh_rfk = async (req, res) => {
       }
 
       await t.commit();
-      res.status(200).send({
+      res.status(200).json({
         result: true,
         message: 'Created successfully'
       });
 
     } catch (error) {
       await t.rollback();
+      console.error('Transaction Error:', error);
       throw error;
     }
 
   } catch (error) {
-    console.log("Server Error:", error);
-    res.status(500).send({
+    console.error('Server Error:', error);
+    res.status(500).json({
+      result: false,
       message: error.message || 'Internal server error',
       errorDetail: error.stack
     });

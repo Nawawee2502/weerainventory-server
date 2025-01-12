@@ -1,24 +1,38 @@
-const { 
+const {
   User,
-  Tbl_kitchen, 
-  sequelize, 
-  Tbl_product, 
-  Tbl_unit: unitModel, 
-  Wh_dpk: wh_dpkModel, 
-  Wh_dpkdt: wh_dpkdtModel 
+  Tbl_kitchen,
+  sequelize,
+  Tbl_product,
+  Tbl_unit: unitModel,
+  Wh_dpk: wh_dpkModel,
+  Wh_dpkdt: wh_dpkdtModel,
+  Wh_stockcard,
+  Wh_product_lotno
 } = require("../models/mainModel");
 
 exports.addWh_dpk = async (req, res) => {
-  try {
-    const headerData = req.body.headerData;
-    const productArrayData = req.body.productArrayData;
-    const footerData = req.body.footerData;
+  const t = await sequelize.transaction();
 
-    // เริ่ม transaction
-    const t = await sequelize.transaction();
+  try {
+    const { headerData, productArrayData, footerData } = req.body;
+
+    console.log('Received Data:', {
+      headerData,
+      productArrayData,
+      footerData
+    });
+
+    // ตรวจสอบข้อมูลที่จำเป็น
+    if (!headerData.refno || !headerData.kitchen_code) {
+      throw new Error('Missing required fields in header data');
+    }
+
+    if (!Array.isArray(productArrayData) || productArrayData.length === 0) {
+      throw new Error('Product data is required');
+    }
 
     try {
-      // สร้าง WH_DPK record
+      // 1. สร้าง WH_DPK record
       await wh_dpkModel.create({
         refno: headerData.refno,
         rdate: headerData.rdate,
@@ -32,32 +46,134 @@ exports.addWh_dpk = async (req, res) => {
         total: footerData.total
       }, { transaction: t });
 
-      // สร้าง WH_DPKDT records
+      // 2. สร้าง detail records
       await wh_dpkdtModel.bulkCreate(productArrayData, { transaction: t });
 
-      // ลด lotno ลง 1 สำหรับแต่ละ product
+      // 3. สร้าง stockcard records และอัพเดท lotno และ product_lotno
       for (const item of productArrayData) {
+        // หา records ทั้งหมดของสินค้านี้เพื่อคำนวณยอดรวม
+        const stockcardRecords = await Wh_stockcard.findAll({
+          where: { product_code: item.product_code },
+          order: [
+            ['rdate', 'DESC'],
+            ['refno', 'DESC']
+          ],
+          raw: true,
+          transaction: t
+        });
+
+        // คำนวณยอดรวมจาก records ที่มีอยู่
+        const totals = stockcardRecords.reduce((acc, record) => {
+          return {
+            beg1: acc.beg1 + Number(record.beg1 || 0),
+            in1: acc.in1 + Number(record.in1 || 0),
+            out1: acc.out1 + Number(record.out1 || 0),
+            upd1: acc.upd1 + Number(record.upd1 || 0),
+            beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
+            in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
+            out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
+            upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
+          };
+        }, {
+          beg1: 0, in1: 0, out1: 0, upd1: 0,
+          beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
+        });
+
+        // คำนวณค่าใหม่สำหรับการเบิกจ่าย
+        const outAmount = Number(item.qty || 0);
+        const outPrice = Number(item.uprice || 0);
+        const outAmountValue = outAmount * outPrice;
+
+        // คำนวณ balance และ balance_amount
+        const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
+        const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
+
+        // สร้าง stockcard record ใหม่
+        await Wh_stockcard.create({
+          myear: headerData.myear,
+          monthh: headerData.monthh,
+          product_code: item.product_code,
+          unit_code: item.unit_code,
+          refno: headerData.refno,
+          rdate: headerData.rdate,
+          trdate: headerData.trdate,
+          lotno: 0,
+          beg1: 0,
+          in1: 0,
+          out1: outAmount, // บันทึกในฝั่ง out
+          upd1: 0,
+          uprice: outPrice,
+          beg1_amt: 0,
+          in1_amt: 0,
+          out1_amt: outAmountValue, // บันทึกมูลค่าในฝั่ง out
+          upd1_amt: 0,
+          balance: previousBalance - outAmount, // ลบจาก balance เดิม
+          balance_amount: previousBalanceAmount - outAmountValue // ลบจาก balance_amount เดิม
+        }, { transaction: t });
+
+        // ลด lotno ลง 1
         await Tbl_product.decrement('lotno', {
           by: 1,
           where: { product_code: item.product_code },
           transaction: t
         });
+
+        // อัพเดท qty_use ใน wh_product_lotno
+        await Wh_product_lotno.update(
+          {
+            qty_use: outAmount // เพิ่ม qty_use ตามจำนวนที่เบิก
+          },
+          {
+            where: {
+              product_code: item.product_code,
+              refno: item.refno
+            },
+            transaction: t
+          }
+        );
+
+        // ถ้าไม่มี record ใน wh_product_lotno ให้สร้างใหม่
+        const existingLotno = await Wh_product_lotno.findOne({
+          where: {
+            product_code: item.product_code,
+            refno: headerData.refno
+          },
+          transaction: t
+        });
+
+        if (!existingLotno) {
+          await Wh_product_lotno.create({
+            product_code: item.product_code,
+            lotno: 0, // หรือค่าที่เหมาะสม
+            unit_code: item.unit_code,
+            qty: previousBalance - outAmount,
+            uprice: outPrice,
+            refno: headerData.refno,
+            qty_use: outAmount,
+            rdate: headerData.rdate
+          }, { transaction: t });
+        }
       }
 
-      // Commit transaction
       await t.commit();
-      res.status(200).send({ result: true });
+      res.status(200).json({
+        result: true,
+        message: 'Created successfully'
+      });
 
     } catch (error) {
-      // Rollback ถ้าเกิด error
       await t.rollback();
-      console.log('Transaction Error:', error);
+      console.error('Transaction Error:', error);
       throw error;
     }
 
   } catch (error) {
-    console.log('Server Error:', error);
-    res.status(500).send({ message: error.message });
+    console.error('Server Error:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'Internal server error',
+      errorDetail: error.stack
+    });
   }
 };
 

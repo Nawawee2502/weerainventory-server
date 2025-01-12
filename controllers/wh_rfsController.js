@@ -146,7 +146,7 @@ exports.addWh_rfs = async (req, res) => {
           product_code: item.product_code,
           lotno: newLotno,
           unit_code: item.unit_code,
-          qty: newAmount,
+          qty: previousBalance + newAmount,
           uprice: newPrice,
           refno: headerData.refno,
           qty_use: 0.00,
