@@ -3,74 +3,163 @@ const Wh_product_lotnoModel = require("../models/mainModel").Wh_product_lotno;
 const { Tbl_product, Tbl_unit } = require("../models/mainModel");
 const { sequelize } = require("../models/mainModel");
 
-
 exports.addWh_stockcard = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
     console.log("Incoming request body:", req.body);
 
-    // Check for existing record
-    const existingRecord = await Wh_stockcardModel.findOne({
-      where: {
-        product_code: req.body.product_code,
-        rdate: req.body.rdate,
-        trdate: req.body.trdate
-      },
-      transaction: t
-    });
-
-    if (existingRecord) {
-      await t.rollback();
-      return res.status(400).send({
-        result: false,
-        message: `This product has already been added on ${req.body.rdate}`,
-        type: 'DUPLICATE_RECORD'
-      });
+    // Validate required fields
+    if (!req.body.product_code || !req.body.rdate || !req.body.trdate) {
+      throw new Error('Missing required fields: product_code, rdate, or trdate');
     }
 
-    // Calculate balance and balance_amount
-    const balance = (Number(req.body.beg1) || 0) +
-      (Number(req.body.in1) || 0) -
-      (Number(req.body.out1) || 0) +
-      (Number(req.body.upd1) || 0);
+    try {
+      // Check for existing record
+      const existingRecord = await Wh_stockcardModel.findOne({
+        where: {
+          product_code: req.body.product_code,
+          rdate: req.body.rdate,
+          trdate: req.body.trdate
+        },
+        transaction: t
+      });
 
-    const balance_amount = balance * (Number(req.body.uprice) || 0);
+      if (existingRecord) {
+        await t.rollback();
+        return res.status(400).send({
+          result: false,
+          message: `This product has already been added on ${req.body.rdate}`,
+          type: 'DUPLICATE_RECORD'
+        });
+      }
 
-    // Create stockcard record with balance fields
-    const stockcardRecord = await Wh_stockcardModel.create({
-      myear: req.body.myear,
-      monthh: req.body.monthh,
-      product_code: req.body.product_code,
-      unit_code: req.body.unit_code,
-      refno: req.body.refno,
-      rdate: req.body.rdate,
-      trdate: req.body.trdate,
-      beg1: req.body.beg1,
-      in1: req.body.in1,
-      out1: req.body.out1,
-      upd1: req.body.upd1,
-      uprice: req.body.uprice,
-      beg1_amt: req.body.beg1_amt,
-      in1_amt: req.body.in1_amt,
-      out1_amt: req.body.out1_amt,
-      upd1_amt: req.body.upd1_amt,
-      balance: balance,
-      balance_amount: balance_amount
-    }, { transaction: t });
+      // Get all previous records for this product to calculate running totals
+      const stockcardRecords = await Wh_stockcardModel.findAll({
+        where: { product_code: req.body.product_code },
+        order: [
+          ['rdate', 'DESC'],
+          ['refno', 'DESC']
+        ],
+        raw: true,
+        transaction: t
+      });
 
-    console.log("Created stockcard record:", stockcardRecord);
+      // Calculate previous totals
+      const totals = stockcardRecords.reduce((acc, record) => {
+        return {
+          beg1: acc.beg1 + Number(record.beg1 || 0),
+          in1: acc.in1 + Number(record.in1 || 0),
+          out1: acc.out1 + Number(record.out1 || 0),
+          upd1: acc.upd1 + Number(record.upd1 || 0),
+          beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
+          in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
+          out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
+          upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
+        };
+      }, {
+        beg1: 0, in1: 0, out1: 0, upd1: 0,
+        beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
+      });
 
-    await t.commit();
-    res.status(200).send({
-      result: true,
-      message: 'Created successfully'
-    });
+      // Calculate new values
+      const newBeg1 = Number(req.body.beg1 || 0);
+      const newIn1 = Number(req.body.in1 || 0);
+      const newOut1 = Number(req.body.out1 || 0);
+      const newUpd1 = Number(req.body.upd1 || 0);
+      const newPrice = Number(req.body.uprice || 0);
+
+      // Calculate monetary values
+      const beg1_amt = newBeg1 * newPrice;
+      const in1_amt = newIn1 * newPrice;
+      const out1_amt = newOut1 * newPrice;
+      const upd1_amt = newUpd1 * newPrice;
+
+      // Calculate running balances
+      const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
+      const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
+
+      const currentTransactionBalance = newBeg1 + newIn1 + newUpd1 - newOut1;
+      const currentTransactionAmount = beg1_amt + in1_amt + upd1_amt - out1_amt;
+
+      const finalBalance = previousBalance + currentTransactionBalance;
+      const finalBalanceAmount = previousBalanceAmount + currentTransactionAmount;
+
+      // Create stockcard record with calculated values
+      const stockcardRecord = await Wh_stockcardModel.create({
+        myear: req.body.myear,
+        monthh: req.body.monthh,
+        product_code: req.body.product_code,
+        unit_code: req.body.unit_code,
+        refno: req.body.refno,
+        rdate: req.body.rdate,
+        trdate: req.body.trdate,
+        beg1: newBeg1,
+        in1: newIn1,
+        out1: newOut1,
+        upd1: newUpd1,
+        uprice: newPrice,
+        beg1_amt: beg1_amt,
+        in1_amt: in1_amt,
+        out1_amt: out1_amt,
+        upd1_amt: upd1_amt,
+        balance: finalBalance,
+        balance_amount: finalBalanceAmount
+      }, { transaction: t });
+
+      console.log("Created stockcard record:", stockcardRecord);
+
+      // Handle product lotno if necessary
+      if (newIn1 > 0) {
+        const product = await Tbl_product.findOne({
+          where: { product_code: req.body.product_code },
+          attributes: ['lotno'],
+          transaction: t
+        });
+
+        const newLotno = (product?.lotno || 0) + 1;
+
+        // Create product lotno record
+        await Wh_product_lotnoModel.create({
+          product_code: req.body.product_code,
+          lotno: newLotno,
+          unit_code: req.body.unit_code,
+          qty: finalBalance,
+          uprice: newPrice,
+          refno: req.body.refno,
+          qty_use: 0.00,
+          rdate: req.body.rdate
+        }, { transaction: t });
+
+        // Update product lotno
+        await Tbl_product.update(
+          { lotno: newLotno },
+          {
+            where: { product_code: req.body.product_code },
+            transaction: t
+          }
+        );
+      }
+
+      await t.commit();
+      res.status(200).send({
+        result: true,
+        message: 'Created successfully',
+        data: stockcardRecord
+      });
+
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
 
   } catch (error) {
-    await t.rollback();
-    console.log("Error in addWh_stockcard:", error);
-    res.status(500).send({ message: error.message });
+    console.error("Error in addWh_stockcard:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message,
+      errorDetail: error.stack
+    });
   }
 };
 

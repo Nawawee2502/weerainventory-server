@@ -62,6 +62,9 @@ module.exports = (sequelize, DataTypes) => {
         menu_setwh_dispatch_to_branch: {
             type: DataTypes.STRING(10),
         },
+        menu_setwh_daily_closing: {
+            type: DataTypes.STRING(10),
+        },
         menu_setwh_report: {
             type: DataTypes.STRING(10),
         },

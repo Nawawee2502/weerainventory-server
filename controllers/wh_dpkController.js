@@ -22,7 +22,6 @@ exports.addWh_dpk = async (req, res) => {
       footerData
     });
 
-    // ตรวจสอบข้อมูลที่จำเป็น
     if (!headerData.refno || !headerData.kitchen_code) {
       throw new Error('Missing required fields in header data');
     }
@@ -49,20 +48,15 @@ exports.addWh_dpk = async (req, res) => {
       // 2. สร้าง detail records
       await wh_dpkdtModel.bulkCreate(productArrayData, { transaction: t });
 
-      // 3. สร้าง stockcard records และอัพเดท lotno และ product_lotno
+      // 3. สร้าง stockcard records และอัพเดท lotno
       for (const item of productArrayData) {
-        // หา records ทั้งหมดของสินค้านี้เพื่อคำนวณยอดรวม
         const stockcardRecords = await Wh_stockcard.findAll({
           where: { product_code: item.product_code },
-          order: [
-            ['rdate', 'DESC'],
-            ['refno', 'DESC']
-          ],
+          order: [['rdate', 'DESC'], ['refno', 'DESC']],
           raw: true,
           transaction: t
         });
 
-        // คำนวณยอดรวมจาก records ที่มีอยู่
         const totals = stockcardRecords.reduce((acc, record) => {
           return {
             beg1: acc.beg1 + Number(record.beg1 || 0),
@@ -79,16 +73,13 @@ exports.addWh_dpk = async (req, res) => {
           beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
         });
 
-        // คำนวณค่าใหม่สำหรับการเบิกจ่าย
         const outAmount = Number(item.qty || 0);
         const outPrice = Number(item.uprice || 0);
         const outAmountValue = outAmount * outPrice;
 
-        // คำนวณ balance และ balance_amount
         const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
         const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
 
-        // สร้าง stockcard record ใหม่
         await Wh_stockcard.create({
           myear: headerData.myear,
           monthh: headerData.monthh,
@@ -100,59 +91,48 @@ exports.addWh_dpk = async (req, res) => {
           lotno: 0,
           beg1: 0,
           in1: 0,
-          out1: outAmount, // บันทึกในฝั่ง out
+          out1: outAmount,
           upd1: 0,
           uprice: outPrice,
           beg1_amt: 0,
           in1_amt: 0,
-          out1_amt: outAmountValue, // บันทึกมูลค่าในฝั่ง out
+          out1_amt: outAmountValue,
           upd1_amt: 0,
-          balance: previousBalance - outAmount, // ลบจาก balance เดิม
-          balance_amount: previousBalanceAmount - outAmountValue // ลบจาก balance_amount เดิม
+          balance: previousBalance - outAmount,
+          balance_amount: previousBalanceAmount - outAmountValue
         }, { transaction: t });
 
-        // ลด lotno ลง 1
-        await Tbl_product.decrement('lotno', {
-          by: 1,
+        // หา lotno ล่าสุดจาก wh_product_lotno
+        const lastLotno = await Wh_product_lotno.findOne({
           where: { product_code: item.product_code },
+          order: [['lotno', 'DESC']],
+          attributes: ['lotno'],
           transaction: t
         });
 
-        // อัพเดท qty_use ใน wh_product_lotno
-        await Wh_product_lotno.update(
+        const newLotno = (lastLotno?.lotno || 0) + 1;
+
+        // อัพเดท lotno ในตาราง product
+        await Tbl_product.update(
+          { lotno: newLotno },
           {
-            qty_use: outAmount // เพิ่ม qty_use ตามจำนวนที่เบิก
-          },
-          {
-            where: {
-              product_code: item.product_code,
-              refno: item.refno
-            },
+            where: { product_code: item.product_code },
             transaction: t
           }
         );
 
-        // ถ้าไม่มี record ใน wh_product_lotno ให้สร้างใหม่
-        const existingLotno = await Wh_product_lotno.findOne({
-          where: {
-            product_code: item.product_code,
-            refno: headerData.refno
-          },
-          transaction: t
-        });
-
-        if (!existingLotno) {
-          await Wh_product_lotno.create({
-            product_code: item.product_code,
-            lotno: 0, // หรือค่าที่เหมาะสม
-            unit_code: item.unit_code,
-            qty: previousBalance - outAmount,
-            uprice: outPrice,
-            refno: headerData.refno,
-            qty_use: outAmount,
-            rdate: headerData.rdate
-          }, { transaction: t });
-        }
+        // สร้าง product lotno record ใหม่
+        await Wh_product_lotno.create({
+          product_code: item.product_code,
+          lotno: newLotno,
+          unit_code: item.unit_code,
+          qty: previousBalance,
+          uprice: outPrice,
+          refno: headerData.refno,
+          qty_use: outAmount,
+          rdate: headerData.rdate,
+          ...(item.temperature1 && { temperature1: item.temperature1 })
+        }, { transaction: t });
       }
 
       await t.commit();
@@ -176,6 +156,7 @@ exports.addWh_dpk = async (req, res) => {
     });
   }
 };
+
 
 exports.Wh_dpkAlljoindt = async (req, res) => {
   try {

@@ -51,39 +51,65 @@ exports.login = async (req, res) => {
 
 exports.addUser = async (req, res) => {
   try {
-    userModel.create({
-      user_code: req.body.user_code,
-      username: req.body.username,
-      typeuser_code: req.body.typeuser_code,
-      password: bcrypt.hashSync(req.body.password, 10),
-      email: req.body.email,
-      line_uid: req.body.line_uid
-    })
-    res.status(200).send({ result: true })
-  } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
-  }
+    const {
+      user_code,
+      username,
+      password,
+      typeuser_code,
+      email,
+      line_uid,
+      branch_code,
+      kitchen_code
+    } = req.body;
 
+    await userModel.create({
+      user_code,
+      username,
+      password: bcrypt.hashSync(password, 10),
+      typeuser_code,
+      email,
+      line_uid,
+      branch_code: branch_code || null,
+      kitchen_code: kitchen_code || null
+    });
+
+    res.status(200).send({ result: true });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({ message: error });
+  }
 };
 
 exports.updateUser = async (req, res) => {
   try {
+    const {
+      user_code,
+      username,
+      password,
+      typeuser_code,
+      email,
+      line_uid,
+      branch_code,
+      kitchen_code
+    } = req.body;
+
     const updateData = {
-      username: req.body.username,
-      typeuser_code: req.body.typeuser_code,
-      email: req.body.email,
-      line_uid: req.body.line_uid,
+      username,
+      typeuser_code,
+      email,
+      line_uid,
+      branch_code: branch_code || null,
+      kitchen_code: kitchen_code || null
     };
 
     // เพิ่ม password เฉพาะเมื่อมีการส่งมา
-    if (req.body.password) {
-      updateData.password = bcrypt.hashSync(req.body.password, 10);
+    if (password) {
+      updateData.password = bcrypt.hashSync(password, 10);
     }
 
     await userModel.update(
       updateData,
-      { where: { user_code: req.body.user_code } }
+      { where: { user_code } }
     );
 
     res.status(200).send({ result: true });
@@ -92,6 +118,7 @@ exports.updateUser = async (req, res) => {
     res.status(500).send({ message: error });
   }
 };
+
 
 
 exports.deleteUser = async (req, res) => {
