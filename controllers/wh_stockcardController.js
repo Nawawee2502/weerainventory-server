@@ -1,7 +1,9 @@
-const Wh_stockcardModel = require("../models/mainModel").Wh_stockcard;
-const Wh_product_lotnoModel = require("../models/mainModel").Wh_product_lotno;
-const { Tbl_product, Tbl_unit } = require("../models/mainModel");
-const { sequelize } = require("../models/mainModel");
+const {
+  Wh_stockcard: Wh_stockcardModel,
+  Tbl_product,
+  Tbl_unit
+} = require("../models/mainModel");
+const { Op } = require("sequelize");
 
 exports.addWh_stockcard = async (req, res) => {
   const t = await sequelize.transaction();
@@ -288,7 +290,6 @@ exports.deleteWh_stockcard = async (req, res) => {
 exports.Query_Wh_stockcard = async (req, res) => {
   try {
     const { offset, limit, rdate, rdate1, rdate2, product_code, product_name, trdate, refno } = req.body;
-    const { Op } = require("sequelize");
 
     let whereClause = {};
 
@@ -310,11 +311,31 @@ exports.Query_Wh_stockcard = async (req, res) => {
     }
 
     const stockcardShow = await Wh_stockcardModel.findAll({
+      attributes: [
+        'product_code',
+        'unit_code',
+        'refno',
+        'rdate',
+        'trdate',
+        'beg1',
+        'in1',
+        'out1',
+        'upd1',
+        'uprice',
+        'beg1_amt',
+        'in1_amt',
+        'out1_amt',
+        'upd1_amt',
+        'balance',
+        'balance_amount',
+        'myear',
+        'monthh'
+      ],
       where: whereClause,
       include: [
         {
           model: Tbl_product,
-          attributes: ['product_code', 'product_name'],
+          attributes: ['product_code', 'product_name', 'typeproduct_code'],
           required: true,
           where: Object.keys(productWhereClause).length > 0 ? productWhereClause : undefined
         },
@@ -325,53 +346,60 @@ exports.Query_Wh_stockcard = async (req, res) => {
         }
       ],
       order: [
-        [{ model: Tbl_product }, 'typeproduct_code', 'ASC'], // Order by typeproduct_code instead
+        [{ model: Tbl_product }, 'typeproduct_code', 'ASC'],
         [{ model: Tbl_product }, 'product_name', 'ASC'],
         ['trdate', 'ASC'],
         ['refno', 'ASC']
       ],
-      offset: offset,
-      limit: limit
+      offset: offset || 0,
+      limit: limit || 10
     });
+
+    const transformedData = stockcardShow.map((item, index) => ({
+      ...item.get({ plain: true }),
+      id: (offset || 0) + index + 1
+    }));
 
     res.status(200).send({
       result: true,
-      data: stockcardShow
+      data: transformedData
     });
 
   } catch (error) {
-    console.log("Error in Query_Wh_stockcard:", error);
+    console.error("Error in Query_Wh_stockcard:", error);
     res.status(500).send({
       result: false,
-      message: error.message
+      message: error.message || "An error occurred while fetching stockcard data"
     });
   }
 };
 
 exports.countWh_stockcard = async (req, res) => {
   try {
-    const { rdate, trdate, product_name, refno } = req.body;  // เพิ่ม trdate และ refno
+    const { rdate, trdate, product_name, refno } = req.body;
     const { Op } = require("sequelize");
 
     let whereClause = {};
     if (rdate) {
       whereClause.rdate = rdate;
     }
-    if (trdate) {  // เพิ่มเงื่อนไข trdate
+    if (trdate) {
       whereClause.trdate = trdate;
     }
-    if (refno) {   // เพิ่มเงื่อนไข refno
+    if (refno) {
       whereClause.refno = refno;
     }
 
     const countOptions = {
-      where: whereClause
+      where: whereClause,
+      distinct: true,
+      col: 'refno' // หรือใช้คอลัมน์อื่นที่เหมาะสม
     };
 
     if (product_name) {
       countOptions.include = [{
         model: Tbl_product,
-        attributes: ['product_code', 'product_name'],
+        attributes: [],  // ไม่ต้องเลือกคอลัมน์ใดๆ จาก product
         where: {
           product_name: {
             [Op.like]: `%${product_name}%`
@@ -382,9 +410,17 @@ exports.countWh_stockcard = async (req, res) => {
     }
 
     const amount = await Wh_stockcardModel.count(countOptions);
-    res.status(200).send({ result: true, data: amount });
+
+    res.status(200).send({
+      result: true,
+      data: amount
+    });
+
   } catch (error) {
-    console.log("Error in countWh_stockcard:", error);
-    res.status(500).send({ message: error.message });
+    console.error("Error in countWh_stockcard:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message || "An error occurred while counting records"
+    });
   }
 };

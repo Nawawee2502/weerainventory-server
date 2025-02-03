@@ -6,19 +6,26 @@ const {
   Br_rfk: br_rfkModel,
   Br_rfkdt: br_rfkdtModel,
   Tbl_unit: unitModel,
+  Br_product_lotno,
+  Br_stockcard,
   Tbl_branch
 } = require("../models/mainModel");
 
 exports.addBr_rfk = async (req, res) => {
-  try {
-    const headerData = req.body.headerData;
-    const productArrayData = req.body.productArrayData;
-    const footerData = req.body.footerData;
+  const t = await sequelize.transaction();
 
-    const t = await sequelize.transaction();
+  try {
+    const { headerData, productArrayData, footerData } = req.body;
+
+    if (!headerData.refno || !headerData.kitchen_code || !headerData.branch_code) {
+      throw new Error('Missing required fields in header data');
+    }
+
+    if (!Array.isArray(productArrayData) || productArrayData.length === 0) {
+      throw new Error('Product data is required');
+    }
 
     try {
-      // Create BR_RFK record
       await br_rfkModel.create({
         refno: headerData.refno,
         rdate: headerData.rdate,
@@ -28,59 +35,225 @@ exports.addBr_rfk = async (req, res) => {
         monthh: headerData.monthh,
         myear: headerData.myear,
         user_code: headerData.user_code,
-        taxable: footerData.taxable,
-        nontaxable: footerData.nontaxable,
-        total: footerData.total
+        taxable: footerData.taxable || 0,
+        nontaxable: footerData.nontaxable || 0,
+        total: footerData.total || 0
       }, { transaction: t });
 
-      // Create BR_RFKDT records
-      await br_rfkdtModel.bulkCreate(productArrayData, { transaction: t });
+      await br_rfkdtModel.bulkCreate(
+        productArrayData.map(item => ({
+          refno: headerData.refno,
+          product_code: item.product_code,
+          qty: Number(item.qty || 0),
+          unit_code: item.unit_code,
+          uprice: Number(item.uprice || 0),
+          tax1: item.tax1,
+          expire_date: item.expire_date || null,
+          texpire_date: item.texpire_date || null,
+          temperature1: item.temperature1 || null,
+          amt: Number(item.amt || 0)
+        })),
+        { transaction: t }
+      );
+
+      for (const item of productArrayData) {
+        const stockcardRecords = await Br_stockcard.findAll({
+          where: { 
+            product_code: item.product_code,
+            branch_code: headerData.branch_code
+          },
+          order: [['rdate', 'DESC'], ['refno', 'DESC']],
+          raw: true,
+          transaction: t
+        });
+
+        const totals = stockcardRecords.reduce((acc, record) => ({
+          beg1: acc.beg1 + Number(record.beg1 || 0),
+          in1: acc.in1 + Number(record.in1 || 0),
+          out1: acc.out1 + Number(record.out1 || 0),
+          upd1: acc.upd1 + Number(record.upd1 || 0),
+          beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
+          in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
+          out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
+          upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
+        }), {
+          beg1: 0, in1: 0, out1: 0, upd1: 0,
+          beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
+        });
+
+        const newAmount = Number(item.qty || 0);
+        const newPrice = Number(item.uprice || 0);
+        const newAmountValue = newAmount * newPrice;
+
+        const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
+        const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
+
+        await Br_stockcard.create({
+          myear: headerData.myear,
+          monthh: headerData.monthh,
+          product_code: item.product_code,
+          unit_code: item.unit_code,
+          refno: headerData.refno,
+          branch_code: headerData.branch_code,
+          rdate: headerData.rdate,
+          trdate: headerData.trdate,
+          lotno: 0,
+          beg1: 0,
+          in1: newAmount,
+          out1: 0,
+          upd1: 0,
+          uprice: newPrice,
+          beg1_amt: 0,
+          in1_amt: newAmountValue,
+          out1_amt: 0,
+          upd1_amt: 0,
+          balance: previousBalance + newAmount,
+          balance_amount: previousBalanceAmount + newAmountValue
+        }, { transaction: t });
+
+        const product = await Tbl_product.findOne({
+          where: { product_code: item.product_code },
+          attributes: ['lotno'],
+          transaction: t
+        });
+
+        const newLotno = (product?.lotno || 0) + 1;
+
+        await Tbl_product.update(
+          { lotno: newLotno },
+          {
+            where: { product_code: item.product_code },
+            transaction: t
+          }
+        );
+      }
 
       await t.commit();
-      res.status(200).send({ result: true });
+      res.status(200).json({
+        result: true,
+        message: 'Created successfully'
+      });
+
     } catch (error) {
       await t.rollback();
+      console.error('Transaction Error:', error);
       throw error;
     }
+
   } catch (error) {
-    console.log(error);
-    res.status(500).send({ message: error.message });
+    console.error('Server Error:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'Internal server error',
+      errorDetail: error.stack
+    });
   }
 };
 
 exports.updateBr_rfk = async (req, res) => {
+  const t = await sequelize.transaction();
+
   try {
-    br_rfkModel.update(
+    const updateData = req.body;
+
+    const detailRecords = await br_rfkdtModel.findAll({
+      where: { refno: updateData.refno },
+      transaction: t
+    });
+
+    const balance = detailRecords.reduce((sum, record) => sum + Number(record.qty || 0), 0);
+    const balance_amount = detailRecords.reduce((sum, record) => {
+      const qty = Number(record.qty || 0);
+      const uprice = Number(record.uprice || 0);
+      return sum + (qty * uprice);
+    }, 0);
+
+    const updateResult = await br_rfkModel.update(
       {
-        rdate: req.body.rdate,
-        trdate: req.body.trdate,
-        myear: req.body.myear,
-        monthh: req.body.monthh,
-        kitchen_code: req.body.kitchen_code,
-        branch_code: req.body.branch_code,
-        taxable: req.body.taxable,
-        nontaxable: req.body.nontaxable,
-        total: req.body.total,
-        user_code: req.body.user_code,
+        rdate: updateData.rdate,
+        trdate: updateData.trdate,
+        myear: updateData.myear,
+        monthh: updateData.monthh,
+        kitchen_code: updateData.kitchen_code,
+        branch_code: updateData.branch_code,
+        taxable: updateData.taxable || 0,
+        nontaxable: updateData.nontaxable || 0,
+        total: updateData.total || 0,
+        user_code: updateData.user_code,
+        balance: balance,
+        balance_amount: balance_amount
       },
-      { where: { refno: req.body.refno } }
+      {
+        where: { refno: updateData.refno },
+        transaction: t
+      }
     );
-    res.status(200).send({ result: true })
+
+    await Br_stockcard.update(
+      {
+        rdate: updateData.rdate,
+        trdate: updateData.trdate,
+        myear: updateData.myear,
+        monthh: updateData.monthh
+      },
+      {
+        where: { refno: updateData.refno },
+        transaction: t
+      }
+    );
+
+    await t.commit();
+    res.status(200).send({
+      result: true,
+      message: 'Updated successfully',
+      updatedRows: updateResult[0]
+    });
+
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    await t.rollback();
+    console.error('Update Error:', error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
 exports.deleteBr_rfk = async (req, res) => {
+  const t = await sequelize.transaction();
+
   try {
-    br_rfkModel.destroy(
-      { where: { refno: req.body.refno } }
-    );
-    res.status(200).send({ result: true })
+    const { refno } = req.body;
+
+    await br_rfkdtModel.destroy({
+      where: { refno },
+      transaction: t
+    });
+
+    await Br_stockcard.destroy({
+      where: { refno },
+      transaction: t
+    });
+
+    const deleteResult = await br_rfkModel.destroy({
+      where: { refno },
+      transaction: t
+    });
+
+    await t.commit();
+    res.status(200).send({
+      result: true,
+      message: 'Deleted successfully',
+      deletedRows: deleteResult
+    });
+
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    await t.rollback();
+    console.error('Delete Error:', error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
@@ -115,36 +288,43 @@ exports.Br_rfkAllrdate = async (req, res) => {
         },
       ],
       where: { trdate: { [Op.between]: [rdate1, rdate2] } },
+      attributes: {
+        include: [
+          'balance',
+          'balance_amount'
+        ]
+      }
     });
-    res.status(200).send({ result: true, data: br_rfkShow })
+
+    res.status(200).send({
+      result: true,
+      data: br_rfkShow
+    });
+
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.error(error);
+    res.status(500).send({ message: error.message });
   }
 };
 
 exports.Br_rfkAlljoindt = async (req, res) => {
   try {
-    const { offset, limit } = req.body;
-    const { rdate1, rdate2 } = req.body;
-    const { kitchen_code, branch_code, product_code } = req.body;
-    const { Op } = require("sequelize");
+    const { offset, limit, rdate1, rdate2, rdate, kitchen_code, branch_code, product_code } = req.body;
 
     let whereClause = {};
+    if (rdate) whereClause.rdate = rdate;
+    if (rdate1 && rdate2) whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    if (kitchen_code) whereClause.kitchen_code = kitchen_code;
+    if (branch_code) whereClause.branch_code = branch_code;
 
-    if (rdate1 && rdate2) {
-      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    let productWhere = {};
+    if (product_code) {
+      productWhere = {
+        product_name: { [Op.like]: `%${product_code}%` }
+      };
     }
 
-    if (kitchen_code && kitchen_code !== '') {
-      whereClause.kitchen_code = kitchen_code;
-    }
-
-    if (branch_code && branch_code !== '') {
-      whereClause.branch_code = branch_code;
-    }
-
-    let br_rfk_headers = await br_rfkModel.findAll({
+    const br_rfk_headers = await br_rfkModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'kitchen_code', 'branch_code', 'taxable', 'nontaxable',
@@ -166,58 +346,30 @@ exports.Br_rfkAlljoindt = async (req, res) => {
           as: 'user',
           attributes: ['user_code', 'username'],
           required: false
+        },
+        {
+          model: br_rfkdtModel,
+          required: false,
+          include: [
+            {
+              model: Tbl_product,
+              attributes: ['product_code', 'product_name'],
+              required: false,
+              where: productWhere
+            },
+            {
+              model: unitModel,
+              attributes: ['unit_code', 'unit_name'],
+              required: false
+            }
+          ]
         }
       ],
       where: whereClause,
       order: [['refno', 'ASC']],
-      offset: offset,
-      limit: limit
+      offset,
+      limit
     });
-
-    if (br_rfk_headers.length > 0) {
-      const refnos = br_rfk_headers.map(header => header.refno);
-
-      let whereDetailClause = {
-        refno: refnos
-      };
-
-      if (product_code && product_code !== '') {
-        whereDetailClause = {
-          refno: refnos,
-          '$tbl_product.product_name$': { [Op.like]: `%${product_code}%` }
-        };
-      }
-
-      const details = await br_rfkdtModel.findAll({
-        where: whereDetailClause,
-        include: [
-          {
-            model: Tbl_product,
-            attributes: ['product_code', 'product_name'],
-            required: true
-          },
-          {
-            model: unitModel,
-            attributes: ['unit_code', 'unit_name'],
-            required: false
-          }
-        ]
-      });
-
-      const detailsByRefno = {};
-      details.forEach(detail => {
-        if (!detailsByRefno[detail.refno]) {
-          detailsByRefno[detail.refno] = [];
-        }
-        detailsByRefno[detail.refno].push(detail);
-      });
-
-      br_rfk_headers = br_rfk_headers.map(header => {
-        const headerData = header.toJSON();
-        headerData.br_rfkdts = detailsByRefno[header.refno] || [];
-        return headerData;
-      });
-    }
 
     res.status(200).send({
       result: true,
@@ -225,7 +377,7 @@ exports.Br_rfkAlljoindt = async (req, res) => {
     });
 
   } catch (error) {
-    console.log("Error in Br_rfkAlljoindt:", error);
+    console.error("Error in Br_rfkAlljoindt:", error);
     res.status(500).send({ message: error.message });
   }
 };
@@ -257,33 +409,40 @@ exports.Br_rfkByRefno = async (req, res) => {
       ],
       where: { refno: refno }
     });
-    res.status(200).send({ result: true, data: br_rfkShow })
+    res.status(200).send({ result: true, data: br_rfkShow });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.error(error);
+    res.status(500).send({ message: error });
   }
 };
 
 exports.countBr_rfk = async (req, res) => {
   try {
-    const { Op } = require("sequelize");
+    const { rdate } = req.body;
+
+    let whereClause = {
+      refno: {
+        [Op.gt]: 0,
+      }
+    };
+
+    if (rdate) {
+      whereClause.rdate = rdate;
+    }
+
     const amount = await br_rfkModel.count({
-      where: {
-        refno: {
-          [Op.gt]: 0,
-        },
-      },
+      where: whereClause
     });
-    res.status(200).send({ result: true, data: amount })
+
+    res.status(200).send({ result: true, data: amount });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.error(error);
+    res.status(500).send({ message: error });
   }
 };
 
 exports.searchBr_rfkrefno = async (req, res) => {
   try {
-    const { Op } = require("sequelize");
     const { refno } = req.body;
 
     const br_rfkShow = await br_rfkModel.findAll({
@@ -294,9 +453,10 @@ exports.searchBr_rfkrefno = async (req, res) => {
       }
     });
     res.status(200).send({ result: true, data: br_rfkShow });
+
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.error(error);
+    res.status(500).send({ message: error });
   }
 };
 
@@ -305,10 +465,10 @@ exports.Br_rfkrefno = async (req, res) => {
     const refno = await br_rfkModel.findOne({
       order: [['refno', 'DESC']],
     });
-    res.status(200).send({ result: true, data: refno })
+    res.status(200).send({ result: true, data: refno });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.error(error);
+    res.status(500).send({ message: error });
   }
 };
 
@@ -322,8 +482,9 @@ exports.searchBr_rfkRunno = async (req, res) => {
       order: [['refno', 'DESC']],
     });
     res.status(200).send({ result: true, data: br_rfkShow });
+
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.error(error);
+    res.status(500).send({ message: error });
   }
 };

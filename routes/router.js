@@ -227,7 +227,8 @@ const {
   Kt_powAllrdate,
   Kt_powrefno,
   searchKt_powRunno,
-  Kt_powByRefno
+  Kt_powByRefno,
+  countKt_pow
 } = require("../controllers/kt_powController")
 
 const {
@@ -247,7 +248,8 @@ const {
   Kt_rfsAllrdate,
   Kt_rfsrefno,
   searchKt_rfsRunno,
-  Kt_rfsByRefno
+  Kt_rfsByRefno,
+  countKt_rfs
 } = require("../controllers/kt_rfsController")
 
 const {
@@ -267,7 +269,8 @@ const {
   Kt_rfwAllrdate,
   Kt_rfwrefno,
   searchKt_rfwRunno,
-  Kt_rfwByRefno
+  Kt_rfwByRefno,
+  countKt_rfw
 } = require("../controllers/kt_rfwController")
 
 const {
@@ -736,7 +739,8 @@ router.post("/Kt_powAlljoindt", Kt_powAlljoindt);
 router.post("/Kt_powAllrdate", Kt_powAllrdate);
 router.post("/Kt_powrefno", Kt_powrefno);
 router.post("/Kt_powbyrefno", Kt_powByRefno);
-router.post("/searchKt_powRunno", searchKt_powRunno)
+router.post("/searchKt_powRunno", searchKt_powRunno);
+router.post("/countkt_pow", countKt_pow);
 
 router.post("/addkt_powdt", addKt_powdt);
 router.post("/updateKt_powdt", updateKt_powdt);
@@ -752,7 +756,8 @@ router.post("/Kt_rfsAlljoindt", Kt_rfsAlljoindt);
 router.post("/Kt_rfsAllrdate", Kt_rfsAllrdate);
 router.post("/Kt_rfsrefno", Kt_rfsrefno);
 router.post("/Kt_rfsbyrefno", Kt_rfsByRefno);
-router.post("/searchKt_rfsRunno", searchKt_rfsRunno)
+router.post("/searchKt_rfsRunno", searchKt_rfsRunno);
+router.post("/countKt_rfs", countKt_rfs);
 
 router.post("/addkt_rfsdt", addKt_rfsdt);
 router.post("/updateKt_rfsdt", updateKt_rfsdt);
@@ -768,7 +773,8 @@ router.post("/Kt_rfwAlljoindt", Kt_rfwAlljoindt);
 router.post("/Kt_rfwAllrdate", Kt_rfwAllrdate);
 router.post("/Kt_rfwrefno", Kt_rfwrefno);
 router.post("/Kt_rfwbyrefno", Kt_rfwByRefno);
-router.post("/searchKt_rfwRunno", searchKt_rfwRunno)
+router.post("/searchKt_rfwRunno", searchKt_rfwRunno);
+router.post("/countKt_rfw", countKt_rfw);
 
 router.post("/addkt_rfwdt", addKt_rfwdt);
 router.post("/updateKt_rfwdt", updateKt_rfwdt);

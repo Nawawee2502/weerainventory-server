@@ -668,6 +668,87 @@ db.Tbl_product.hasMany(db.Kt_rfsdt, {
   sourceKey: 'product_code', // sourceKey ของ Product
 });
 
+// เพิ่มใน mainModel.js
+db.Kt_rfs.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Kt_rfs, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'kt_rfs'
+});
+
+// For Unit
+db.Kt_rfsdt.belongsTo(db.Tbl_unit, {
+  foreignKey: 'unit_code',
+  targetKey: 'unit_code'
+});
+
+db.Tbl_unit.hasMany(db.Kt_rfsdt, {
+  foreignKey: 'unit_code',
+  sourceKey: 'unit_code'
+});
+
+// For Product
+db.Kt_rfsdt.belongsTo(db.Tbl_product, {
+  foreignKey: 'product_code',
+  targetKey: 'product_code'
+});
+
+db.Tbl_product.hasMany(db.Kt_rfsdt, {
+  foreignKey: 'product_code',
+  sourceKey: 'product_code'
+});
+
+// Add user association for kt_rfw
+db.Kt_rfw.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Kt_rfw, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'kt_rfw'
+});
+
+// Add associations for kt_rfwdt
+db.Kt_rfw.hasMany(db.Kt_rfwdt, {
+  foreignKey: 'refno',
+  sourceKey: 'refno'
+});
+
+db.Kt_rfwdt.belongsTo(db.Kt_rfw, {
+  foreignKey: 'refno',
+  targetKey: 'refno'
+});
+
+// For Unit
+db.Kt_rfwdt.belongsTo(db.Tbl_unit, {
+  foreignKey: 'unit_code',
+  targetKey: 'unit_code'
+});
+
+db.Tbl_unit.hasMany(db.Kt_rfwdt, {
+  foreignKey: 'unit_code',
+  sourceKey: 'unit_code'
+});
+
+// For Product
+db.Kt_rfwdt.belongsTo(db.Tbl_product, {
+  foreignKey: 'product_code',
+  targetKey: 'product_code'
+});
+
+db.Tbl_product.hasMany(db.Kt_rfwdt, {
+  foreignKey: 'product_code',
+  sourceKey: 'product_code'
+});
+
 
 // ใบรับสินค้าจาก warehouse
 
@@ -874,6 +955,74 @@ db.Kt_dpbdt.belongsTo(db.Kt_dpb, {
   // as: 'posdttopos'
 });
 
+// เพิ่ม associations สำหรับ kt_pow กับ user
+db.Kt_pow.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Kt_pow, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'kt_pow'
+});
+
+// เพิ่ม associations สำหรับ kt_pow กับ kitchen
+db.Kt_pow.belongsTo(db.Tbl_kitchen, {
+  foreignKey: 'kitchen_code',
+  targetKey: 'kitchen_code',
+});
+
+db.Tbl_kitchen.hasMany(db.Kt_pow, {
+  foreignKey: 'kitchen_code',
+  sourceKey: 'kitchen_code',
+});
+
+// เพิ่ม associations สำหรับ kt_pow กับ kt_powdt
+db.Kt_pow.hasMany(db.Kt_powdt, {
+  foreignKey: 'refno',
+  sourceKey: 'refno'
+});
+
+db.Kt_powdt.belongsTo(db.Kt_pow, {
+  foreignKey: 'refno',
+  targetKey: 'refno'
+});
+
+// เพิ่ม associations สำหรับ kt_powdt กับ tbl_product และ tbl_unit
+db.Kt_powdt.belongsTo(db.Tbl_product, {
+  foreignKey: 'product_code',
+  targetKey: 'product_code'
+});
+
+db.Tbl_product.hasMany(db.Kt_powdt, {
+  foreignKey: 'product_code',
+  sourceKey: 'product_code'
+});
+
+db.Kt_powdt.belongsTo(db.Tbl_unit, {
+  foreignKey: 'unit_code',
+  targetKey: 'unit_code'
+});
+
+db.Tbl_unit.hasMany(db.Kt_powdt, {
+  foreignKey: 'unit_code',
+  sourceKey: 'unit_code'
+});
+
+
+// ความสัมพันธ์กับ Product
+db.Kt_powdt.belongsTo(db.Tbl_product, {
+  foreignKey: 'product_code',
+  targetKey: 'product_code'
+});
+
+db.Tbl_product.hasMany(db.Kt_powdt, {
+  foreignKey: 'product_code',
+  sourceKey: 'product_code'
+});
+
 
 db.Kt_dpb.belongsTo(db.Tbl_kitchen, {
   foreignKey: 'kitchen_code',  // foreignKey ของ Type Product
@@ -910,6 +1059,37 @@ db.Kt_dpbdt.belongsTo(db.Tbl_product, {
 db.Tbl_product.hasMany(db.Kt_dpbdt, {
   foreignKey: 'product_code',  // foreignKey ของ Type Product
   sourceKey: 'product_code', // sourceKey ของ Product
+});
+
+db.Kt_dpb.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Kt_dpb, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'kt_dpb'
+});
+
+db.Kt_stockcard.belongsTo(db.Tbl_kitchen, {
+  foreignKey: 'kitchen_code',
+  targetKey: 'kitchen_code'
+});
+db.Tbl_kitchen.hasMany(db.Kt_stockcard, {
+  foreignKey: 'kitchen_code',
+  sourceKey: 'kitchen_code'
+});
+
+db.Kt_stockcard.belongsTo(db.Tbl_unit, {  // เพิ่ม relation กับ unit
+  foreignKey: 'unit_code',
+  targetKey: 'unit_code'
+});
+
+db.Tbl_unit.hasMany(db.Kt_stockcard, {
+  foreignKey: 'unit_code',
+  sourceKey: 'unit_code'
 });
 
 // ใบปรับปรุงสินค้า
@@ -991,6 +1171,34 @@ db.Br_stockcard.belongsTo(db.Tbl_product, {
 db.Tbl_product.hasMany(db.Br_stockcard, {
   foreignKey: 'product_code',  // foreignKey ของ Type Product
   sourceKey: 'product_code', // sourceKey ของ Product
+});
+
+//stock card relationships
+db.Br_stockcard.belongsTo(db.Tbl_unit, {
+  foreignKey: 'unit_code',
+  targetKey: 'unit_code'
+});
+db.Tbl_unit.hasMany(db.Br_stockcard, {
+  foreignKey: 'unit_code',
+  sourceKey: 'unit_code'
+});
+
+db.Br_stockcard.belongsTo(db.Tbl_product, {
+  foreignKey: 'product_code',
+  targetKey: 'product_code'
+});
+db.Tbl_product.hasMany(db.Br_stockcard, {
+  foreignKey: 'product_code',
+  sourceKey: 'product_code'
+});
+
+db.Br_stockcard.belongsTo(db.Tbl_branch, {
+  foreignKey: 'branch_code',
+  targetKey: 'branch_code'
+});
+db.Tbl_branch.hasMany(db.Br_stockcard, {
+  foreignKey: 'branch_code',
+  sourceKey: 'branch_code'
 });
 
 // กำหนดจำนวนสินค้าขั้นต่ำ
@@ -1308,6 +1516,7 @@ db.Tbl_product.hasMany(db.Br_rfsdt, {
   foreignKey: 'product_code',  // foreignKey ของ Type Product
   sourceKey: 'product_code', // sourceKey ของ Product
 });
+
 
 
 // ใบเบิกสินค้า
