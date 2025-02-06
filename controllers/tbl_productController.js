@@ -1,45 +1,136 @@
 const tbl_productModel = require("../models/mainModel").Tbl_product;
-const tbl_TypeproductModel = require("../models/mainModel").Tbl_typeproduct;
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
-const multer = require("multer")
-const fs = require("fs")
-const formidable = require('formidable');
+const tbl_TypeproductModel = require("../models/mainModel").Tbl_typeproduct; // เพิ่มบรรทัดนี้
+const { Op } = require("sequelize"); // เพิ่มบรรทัดนี้
+const multer = require("multer");
 const path = require('path');
-const tbl_unit = require("../models/mainModel").Tbl_unit;
-// const upload = multer({ dest: 'uploads/' });
+const fs = require('fs');
 
-// กำหนดที่เก็บไฟล์และชื่อไฟล์
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadFolder = path.join(__dirname, 'upload');
-    // ตรวจสอบและสร้างโฟลเดอร์หากยังไม่มี
+    const uploadFolder = path.join(__dirname, '../controllers/public/images');
     if (!fs.existsSync(uploadFolder)) {
       fs.mkdirSync(uploadFolder, { recursive: true });
     }
-    cb(null, uploadFolder);  // เก็บไฟล์ในโฟลเดอร์ 'upload'
+    cb(null, uploadFolder);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + '-' + file.originalname); // ตั้งชื่อไฟล์ใหม่
+    const fileType = file.mimetype.split('/')[1];
+    cb(null, `product-${req.body.product_code}-${uniqueSuffix}.${fileType}`);
   }
 });
 
-// ตัวกรองไฟล์ เพื่ออนุญาตเฉพาะไฟล์รูปภาพ
-const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) {
-    cb(null, true);
-  } else {
-    cb(new Error('กรุณาอัปโหลดเฉพาะไฟล์รูปภาพเท่านั้น'), false);
+const upload = multer({
+  storage: storage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Please upload only image files.'), false);
+    }
+  },
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
+
+exports.updateProductImage = async (req, res) => {
+  try {
+    upload.single('product_img')(req, res, async (err) => {
+      if (err) {
+        console.error('Upload error:', err);
+        return res.status(400).send({
+          result: false,
+          message: err.message
+        });
+      }
+
+      const { product_code } = req.body;
+
+      // หา product เดิมเพื่อลบรูปเก่า
+      const existingProduct = await tbl_productModel.findOne({
+        where: { product_code }
+      });
+
+      if (existingProduct?.product_img) {
+        const oldImagePath = path.join(process.cwd(), 'public/images', existingProduct.product_img);
+        if (fs.existsSync(oldImagePath)) {
+          fs.unlinkSync(oldImagePath);
+        }
+      }
+
+      // อัพเดทชื่อไฟล์ในฐานข้อมูล
+      if (req.file) {
+        await tbl_productModel.update(
+          { product_img: req.file.filename },
+          { where: { product_code } }
+        );
+
+        res.status(200).send({
+          result: true,
+          message: 'Image uploaded successfully',
+          filename: req.file.filename
+        });
+      } else {
+        res.status(400).send({
+          result: false,
+          message: 'No file uploaded'
+        });
+      }
+    });
+  } catch (error) {
+    console.error('Controller error:', error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
-// กำหนดขนาดไฟล์สูงสุด (2MB ในตัวอย่างนี้)
-const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
-  limits: { fileSize: 2 * 1024 * 1024 } // 2MB
-});
+exports.searchProductsForImage = async (req, res) => {
+  try {
+    const { offset = 0, limit = 10, typeproduct_code, product_name } = req.body;
+
+    let whereClause = {};
+
+    if (typeproduct_code) {
+      whereClause.typeproduct_code = typeproduct_code;
+    }
+
+    if (product_name) {
+      whereClause.product_name = {
+        [Op.like]: `%${product_name}%`
+      };
+    }
+
+    const products = await tbl_productModel.findAll({
+      where: whereClause,
+      include: [{
+        model: tbl_TypeproductModel,
+        required: false
+      }],
+      offset: parseInt(offset),
+      limit: parseInt(limit),
+      order: [['product_code', 'ASC']]
+    });
+
+    const total = await tbl_productModel.count({ where: whereClause });
+
+    res.status(200).send({
+      result: true,
+      data: products,
+      total,
+      offset,
+      limit
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
+  }
+};
 
 exports.addproduct = async (req, res) => {
   try {

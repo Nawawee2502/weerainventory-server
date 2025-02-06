@@ -35,6 +35,8 @@ const {
   productAlltypeproduct,
   SearchProductCode,
   searchproduct,
+  updateProductImage,
+  searchProductsForImage,
 } = require("../controllers/tbl_productController");
 const {
   addbranch,
@@ -44,6 +46,7 @@ const {
   countBranch,
   searchBranchName,
   branchcode,
+
 } = require("../controllers/tbl_branchModel");
 const {
   addkitchen,
@@ -538,6 +541,8 @@ router.get("/testApi", (req, res) => {
   res.send("API Test Pass...........");
 });
 
+
+
 router.post("/login", login);
 router.post("/addUser", addUser);
 router.post("/updateUser", updateUser);
@@ -574,6 +579,8 @@ router.post("/productcode", productcode);
 router.post("/productalltypeproduct", productAlltypeproduct);
 router.post("/SearchProductCode", SearchProductCode);
 router.post("/searchproduct", searchproduct);
+router.post("/updateproductimage", updateProductImage);
+router.post("/searchproductsimage", searchProductsForImage);
 
 // branch
 router.post("/addbranch", addbranch);

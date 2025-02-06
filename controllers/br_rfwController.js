@@ -25,19 +25,22 @@ exports.addBr_rfw = async (req, res) => {
     }
 
     try {
+      // สร้าง header
       await Br_rfwModel.create({
         refno: headerData.refno,
         rdate: headerData.rdate,
         branch_code: headerData.branch_code,
+        supplier_code: headerData.supplier_code,  // มี supplier_code แล้ว
         trdate: headerData.trdate,
         monthh: headerData.monthh,
         myear: headerData.myear,
         user_code: headerData.user_code,
-        taxable: footerData.taxable,
-        nontaxable: footerData.nontaxable,
-        total: footerData.total
+        taxable: footerData.taxable || 0,
+        nontaxable: footerData.nontaxable || 0,
+        total: footerData.total || 0,
       }, { transaction: t });
 
+      // สร้าง details
       await Br_rfwdtModel.bulkCreate(
         productArrayData.map(item => ({
           refno: headerData.refno,
@@ -47,13 +50,12 @@ exports.addBr_rfw = async (req, res) => {
           uprice: Number(item.uprice),
           tax1: item.tax1,
           amt: Number(item.amt),
-          expire_date: item.expire_date || null,
-          texpire_date: item.texpire_date || null,
-          temperature1: item.temperature1 || null
+          // temperature1: item.temperature1 || null
         })),
         { transaction: t }
       );
 
+      // อัพเดท stock card
       for (const item of productArrayData) {
         const stockcardRecords = await Br_stockcard.findAll({
           where: {

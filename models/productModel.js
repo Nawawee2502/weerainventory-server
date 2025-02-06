@@ -31,6 +31,9 @@ module.exports = (sequelize, DataTypes) => {
       },
       lotno: {
         type: DataTypes.INTEGER(10),
+      },
+      product_img: {
+        type: DataTypes.STRING(255),
       }
     },
     {
