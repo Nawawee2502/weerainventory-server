@@ -116,7 +116,7 @@ const corsOption = {
 app.use(cors(corsOption));
 
 // กำหนด path สำหรับรูปภาพ
-const publicImagePath = path.join(__dirname, 'controllers', 'public', 'images');
+const publicImagePath = path.join(__dirname, 'public', 'images');
 
 // สร้างโฟลเดอร์ถ้ายังไม่มี
 if (!fs.existsSync(publicImagePath)) {
