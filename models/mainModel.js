@@ -1562,5 +1562,18 @@ db.Tbl_product.hasMany(db.Br_grfdt, {
   sourceKey: 'product_code', // sourceKey ของ Product
 });
 
+// Add user association for br_grf
+db.Br_grf.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Br_grf, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'br_grf'
+});
+
 
 module.exports = db;

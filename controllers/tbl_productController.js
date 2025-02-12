@@ -1,5 +1,8 @@
 const tbl_productModel = require("../models/mainModel").Tbl_product;
-const tbl_TypeproductModel = require("../models/mainModel").Tbl_typeproduct; // เพิ่มบรรทัดนี้
+const tbl_TypeproductModel = require("../models/mainModel").Tbl_typeproduct;
+const {
+  Tbl_unit: tbl_UnitModel
+} = require("../models/mainModel");
 const { Op } = require("sequelize"); // เพิ่มบรรทัดนี้
 const multer = require("multer");
 const path = require('path');
@@ -204,7 +207,6 @@ exports.productAll = async (req, res) => {
 exports.productAlltypeproduct = async (req, res) => {
   try {
     const { offset, limit, typeproduct_code, product_name } = req.body;
-    const { Op } = require("sequelize");
 
     let whereClause = {};
 
@@ -224,14 +226,17 @@ exports.productAlltypeproduct = async (req, res) => {
       include: [
         {
           model: tbl_TypeproductModel,
+          required: false,
         },
         {
-          model: tbl_unit,
+          model: tbl_UnitModel,  // Changed from tbl_unit to tbl_UnitModel
           as: 'productUnit1',
+          required: false,
         },
         {
-          model: tbl_unit,
+          model: tbl_UnitModel,  // Changed from tbl_unit to tbl_UnitModel
           as: 'productUnit2',
+          required: false,
         },
       ],
       where: whereClause,
@@ -240,8 +245,8 @@ exports.productAlltypeproduct = async (req, res) => {
 
     res.status(200).send({ result: true, data: productShow })
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log("Error in productAlltypeproduct:", error);
+    res.status(500).send({ message: error.message || "An error occurred while fetching products" })
   }
 };
 
@@ -346,11 +351,7 @@ exports.countProduct = async (req, res) => {
 
 exports.searchProductName = async (req, res) => {
   try {
-    // console.log( req.body.type_productname);
-    const { Op } = require("sequelize");
-    const { product_name } = await req.body;
-    // console.log((typeproduct_name));
-
+    const { product_name } = req.body;
 
     const productShow = await tbl_productModel.findAll({
       include: [
@@ -359,12 +360,12 @@ exports.searchProductName = async (req, res) => {
           required: true,
         },
         {
-          model: tbl_unit,
+          model: tbl_UnitModel,  // เปลี่ยนจาก tbl_unit เป็น tbl_UnitModel
           as: 'productUnit1',
           required: true,
         },
         {
-          model: tbl_unit,
+          model: tbl_UnitModel,  // เปลี่ยนจาก tbl_unit เป็น tbl_UnitModel
           as: 'productUnit2',
           required: true,
         },
@@ -378,17 +379,16 @@ exports.searchProductName = async (req, res) => {
     res.status(200).send({ result: true, data: productShow });
 
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log(error);
+    res.status(500).send({ message: error });
   }
 };
 
+// 3. แก้ไขฟังก์ชัน searchproduct ด้วย
 exports.searchproduct = async (req, res) => {
   try {
     const { product_name, typeproduct_code } = req.body;
-    const { Op } = require("sequelize");
 
-    // สร้าง where clause ตามเงื่อนไขที่ส่งมา
     let whereClause = {};
 
     if (product_name) {
@@ -408,18 +408,18 @@ exports.searchproduct = async (req, res) => {
           required: true,
         },
         {
-          model: tbl_unit,
+          model: tbl_UnitModel,  // เปลี่ยนจาก tbl_unit เป็น tbl_UnitModel
           as: 'productUnit1',
           required: true,
         },
         {
-          model: tbl_unit,
+          model: tbl_UnitModel,  // เปลี่ยนจาก tbl_unit เป็น tbl_UnitModel
           as: 'productUnit2',
           required: true,
         },
       ],
       where: whereClause,
-      order: [['product_code', 'ASC']] // เพิ่มการเรียงลำดับตาม product_code
+      order: [['product_code', 'ASC']]
     });
 
     res.status(200).send({ result: true, data: productShow });

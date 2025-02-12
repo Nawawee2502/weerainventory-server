@@ -10,6 +10,7 @@ const {
   Br_stockcard,
   Tbl_branch
 } = require("../models/mainModel");
+const { Op } = require("sequelize");
 
 exports.addBr_rfk = async (req, res) => {
   const t = await sequelize.transaction();
@@ -58,7 +59,7 @@ exports.addBr_rfk = async (req, res) => {
 
       for (const item of productArrayData) {
         const stockcardRecords = await Br_stockcard.findAll({
-          where: { 
+          where: {
             product_code: item.product_code,
             branch_code: headerData.branch_code
           },
@@ -312,10 +313,22 @@ exports.Br_rfkAlljoindt = async (req, res) => {
     const { offset, limit, rdate1, rdate2, rdate, kitchen_code, branch_code, product_code } = req.body;
 
     let whereClause = {};
-    if (rdate) whereClause.rdate = rdate;
-    if (rdate1 && rdate2) whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
-    if (kitchen_code) whereClause.kitchen_code = kitchen_code;
-    if (branch_code) whereClause.branch_code = branch_code;
+
+    if (rdate) {
+      whereClause.rdate = rdate;
+    }
+
+    if (rdate1 && rdate2) {
+      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    }
+
+    if (kitchen_code) {
+      whereClause.kitchen_code = kitchen_code;
+    }
+
+    if (branch_code) {
+      whereClause.branch_code = branch_code;
+    }
 
     let productWhere = {};
     if (product_code) {
@@ -367,8 +380,8 @@ exports.Br_rfkAlljoindt = async (req, res) => {
       ],
       where: whereClause,
       order: [['refno', 'ASC']],
-      offset,
-      limit
+      offset: parseInt(offset),
+      limit: parseInt(limit)
     });
 
     res.status(200).send({
@@ -378,7 +391,10 @@ exports.Br_rfkAlljoindt = async (req, res) => {
 
   } catch (error) {
     console.error("Error in Br_rfkAlljoindt:", error);
-    res.status(500).send({ message: error.message });
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 

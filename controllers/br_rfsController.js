@@ -38,11 +38,7 @@ exports.addBr_rfs = async (req, res) => {
         user_code: headerData.user_code,
         taxable: footerData.taxable || 0,
         nontaxable: footerData.nontaxable || 0,
-        total: footerData.total || 0,
-        instant_saving: footerData.instant_saving || 0,
-        delivery_surcharge: footerData.delivery_surcharge || 0,
-        sale_tax: footerData.sale_tax || 0,
-        total_due: footerData.total_due || 0
+        total: footerData.total || 0
       }, { transaction: t });
 
       await br_rfsdtModel.bulkCreate(
@@ -55,13 +51,13 @@ exports.addBr_rfs = async (req, res) => {
           tax1: item.tax1,
           expire_date: item.expire_date || null,
           texpire_date: item.texpire_date || null,
-          instant_saving1: Number(item.instant_saving1 || 0),
           temperature1: item.temperature1 || null,
           amt: Number(item.amt || 0)
         })),
         { transaction: t }
       );
 
+      // Stockcard update logic remains the same
       for (const item of productArrayData) {
         const stockcardRecords = await Br_stockcard.findAll({
           where: {
@@ -116,22 +112,6 @@ exports.addBr_rfs = async (req, res) => {
           balance: previousBalance + newAmount,
           balance_amount: previousBalanceAmount + newAmountValue
         }, { transaction: t });
-
-        const product = await Tbl_product.findOne({
-          where: { product_code: item.product_code },
-          attributes: ['lotno'],
-          transaction: t
-        });
-
-        const newLotno = (product?.lotno || 0) + 1;
-
-        await Tbl_product.update(
-          { lotno: newLotno },
-          {
-            where: { product_code: item.product_code },
-            transaction: t
-          }
-        );
       }
 
       await t.commit();
@@ -337,10 +317,18 @@ exports.Br_rfsAlljoindt = async (req, res) => {
 
     const br_rfs_headers = await br_rfsModel.findAll({
       attributes: [
-        'refno', 'rdate', 'trdate', 'myear', 'monthh',
-        'supplier_code', 'branch_code', 'taxable', 'nontaxable',
-        'total', 'instant_saving', 'delivery_surcharge',
-        'sale_tax', 'total_due', 'user_code', 'created_at'
+        'refno',
+        'rdate',
+        'trdate',
+        'myear',
+        'monthh',
+        'supplier_code',
+        'branch_code',
+        'taxable',
+        'nontaxable',
+        'total',
+        'user_code',
+        'created_at'
       ],
       include: [
         {
@@ -379,8 +367,8 @@ exports.Br_rfsAlljoindt = async (req, res) => {
       ],
       where: whereClause,
       order: [['refno', 'ASC']],
-      offset,
-      limit
+      offset: parseInt(offset, 10),
+      limit: parseInt(limit, 10)
     });
 
     res.status(200).send({
@@ -390,7 +378,10 @@ exports.Br_rfsAlljoindt = async (req, res) => {
 
   } catch (error) {
     console.error("Error in Br_rfsAlljoindt:", error);
-    res.status(500).send({ message: error.message });
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
