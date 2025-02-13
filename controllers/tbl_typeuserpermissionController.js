@@ -26,6 +26,7 @@ exports.addtypeuserpermission = async (req, res) => {
       menu_setwh_receipt_from_kitchen: 'N',
       menu_setwh_dispatch_to_kitchen: 'N',
       menu_setwh_dispatch_to_branch: 'N',
+      menu_setwh_beginninginventory: 'N',
       menu_setwh_daily_closing: 'N',
       menu_setwh_report: 'N',
       menu_setkt_purchase_order_to_wh: 'N',
@@ -36,6 +37,8 @@ exports.addtypeuserpermission = async (req, res) => {
       menu_setkt_transfer_to_wh: 'N',
       menu_setkt_dispatch_to_branch: 'N',
       menu_setkt_stock_adjustment: 'N',
+      menu_setkt_beginninginventory: 'N',
+      menu_setkt_dailyclosing: 'N',
       menu_setkt_report: 'N',
       menu_setbr_minmum_stock: 'N',
       menu_setbr_stock_adjustment: 'N',
@@ -44,6 +47,8 @@ exports.addtypeuserpermission = async (req, res) => {
       menu_setbr_receipt_from_kitchen: 'N',
       menu_setbr_receipt_from_supplier: 'N',
       menu_setbr_goods_requisition: 'N',
+      menu_setbr_beginninginventory: 'N',
+      menu_setbr_dailyclosing: 'N',
       menu_setbr_report: 'N'
     };
 
@@ -85,6 +90,7 @@ exports.updatetypeuserpermission = async (req, res) => {
       menu_setwh_receipt_from_kitchen: req.body.menu_setwh_receipt_from_kitchen || 'N',
       menu_setwh_dispatch_to_kitchen: req.body.menu_setwh_dispatch_to_kitchen || 'N',
       menu_setwh_dispatch_to_branch: req.body.menu_setwh_dispatch_to_branch || 'N',
+      menu_setwh_beginninginventory: req.body.menu_setwh_beginninginventory || 'N',
       menu_setwh_daily_closing: req.body.menu_setwh_daily_closing || 'N',
       menu_setwh_report: req.body.menu_setwh_report || 'N',
       menu_setkt_purchase_order_to_wh: req.body.menu_setkt_purchase_order_to_wh || 'N',
@@ -95,6 +101,8 @@ exports.updatetypeuserpermission = async (req, res) => {
       menu_setkt_transfer_to_wh: req.body.menu_setkt_transfer_to_wh || 'N',
       menu_setkt_dispatch_to_branch: req.body.menu_setkt_dispatch_to_branch || 'N',
       menu_setkt_stock_adjustment: req.body.menu_setkt_stock_adjustment || 'N',
+      menu_setkt_beginninginventory: req.body.menu_setkt_beginninginventory || 'N',
+      menu_setkt_dailyclosing: req.body.menu_setkt_dailyclosing || 'N',
       menu_setkt_report: req.body.menu_setkt_report || 'N',
       menu_setbr_minmum_stock: req.body.menu_setbr_minmum_stock || 'N',
       menu_setbr_stock_adjustment: req.body.menu_setbr_stock_adjustment || 'N',
@@ -103,6 +111,8 @@ exports.updatetypeuserpermission = async (req, res) => {
       menu_setbr_receipt_from_kitchen: req.body.menu_setbr_receipt_from_kitchen || 'N',
       menu_setbr_receipt_from_supplier: req.body.menu_setbr_receipt_from_supplier || 'N',
       menu_setbr_goods_requisition: req.body.menu_setbr_goods_requisition || 'N',
+      menu_setbr_beginninginventory: req.body.menu_setbr_beginninginventory || 'N',
+      menu_setbr_dailyclosing: req.body.menu_setbr_dailyclosing || 'N',
       menu_setbr_report: req.body.menu_setbr_report || 'N'
     };
 
@@ -117,7 +127,7 @@ exports.updatetypeuserpermission = async (req, res) => {
   }
 };
 
-
+// ฟังก์ชันอื่นๆ ยังคงเหมือนเดิม เพราะไม่ได้เกี่ยวข้องกับ fields ที่เพิ่มเข้ามาใหม่
 exports.deletetypeuserpermission = async (req, res) => {
   try {
     tbl_typeuserpermissionModel.destroy(
@@ -128,7 +138,6 @@ exports.deletetypeuserpermission = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-
 };
 
 exports.typeuserpermissionAll = async (req, res) => {

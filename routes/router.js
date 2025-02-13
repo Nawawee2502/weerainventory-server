@@ -4,7 +4,8 @@ const {
   updateUser,
   userAll,
   deleteUser,
-  getlastusercode
+  getlastusercode,
+  countUser
 } = require("../controllers/loginController");
 const {
   addtypeproduct,
@@ -532,6 +533,9 @@ const {
   Br_stockcardAll,
 } = require("../controllers/br_stockcardController")
 
+const lineAuthController = require('../controllers/lineAuthContoller')
+
+
 // const { checkAuth } = require("../middleware/checkAuth");
 const router = require("express").Router();
 
@@ -541,6 +545,7 @@ router.get("/testApi", (req, res) => {
   res.send("API Test Pass...........");
 });
 
+router.post('/callback', lineAuthController.lineCallback);
 
 
 router.post("/login", login);
@@ -549,6 +554,7 @@ router.post("/updateUser", updateUser);
 router.post("/userAll", userAll);
 router.post("/deleteUser", deleteUser);
 router.post('/getlastusercode', getlastusercode);
+router.post('/countUser', countUser);
 
 // type_product
 router.post("/addTypeproduct", addtypeproduct);

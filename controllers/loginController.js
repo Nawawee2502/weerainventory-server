@@ -89,6 +89,8 @@ exports.updateUser = async (req, res) => {
       typeuser_code,
       email,
       line_uid,
+      branch_access_type,
+      kitchen_access_type,
       branch_code,
       kitchen_code
     } = req.body;
@@ -98,8 +100,14 @@ exports.updateUser = async (req, res) => {
       typeuser_code,
       email,
       line_uid,
-      branch_code: branch_code || null,
-      kitchen_code: kitchen_code || null
+      // แก้ไขการกำหนดค่า branch_code
+      branch_code: branch_access_type === 'all' ? 'All' :
+        branch_access_type === 'no_permission' ? 'No' :
+          branch_code || 'No',
+      // แก้ไขการกำหนดค่า kitchen_code             
+      kitchen_code: kitchen_access_type === 'all' ? 'All' :
+        kitchen_access_type === 'no_permission' ? 'No' :
+          kitchen_code || 'No'
     };
 
     // เพิ่ม password เฉพาะเมื่อมีการส่งมา
