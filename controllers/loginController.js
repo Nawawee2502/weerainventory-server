@@ -1,53 +1,54 @@
 const db = require("../models/mainModel");
 const userModel = db.Tbl_user;
 const Tbl_TypeuserModel = db.Tbl_typeuser;
+const axios = require('axios');
 
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
 
-exports.login = async (req, res) => {
-  try {
-    const { username, password } = req.body;
+// exports.login = async (req, res) => {
+//   try {
+//     const { username, password } = req.body;
 
-    if (!username || !password)
-      return res
-        .status(400)
-        .send({ message: "Username and Password is Required!" });
+//     if (!username || !password)
+//       return res
+//         .status(400)
+//         .send({ message: "Username and Password is Required!" });
 
-    // เพิ่ม include Tbl_TypeuserpermissionModel
-    const userData = await userModel.findOne({
-      where: { username: username },
-      include: [{
-        model: db.Tbl_typeuserpermission,
-        required: false
-      }]
-    });
+//     // เพิ่ม include Tbl_TypeuserpermissionModel
+//     const userData = await userModel.findOne({
+//       where: { username: username },
+//       include: [{
+//         model: db.Tbl_typeuserpermission,
+//         required: false
+//       }]
+//     });
 
-    if (userData && (await bcrypt.compare(password, userData.password))) {
-      const token = jwt.sign(
-        { username: userData.username, password: userData.password },
-        process.env.ENCRYPT_TOKEN_KEY,
-        { algorithm: 'HS256', expiresIn: 60 * 60 * 24 }
-      );
+//     if (userData && (await bcrypt.compare(password, userData.password))) {
+//       const token = jwt.sign(
+//         { username: userData.username, password: userData.password },
+//         process.env.ENCRYPT_TOKEN_KEY,
+//         { algorithm: 'HS256', expiresIn: 60 * 60 * 24 }
+//       );
 
-      // ทดสอบดูข้อมูลที่จะส่งกลับ
-      console.log("User data with permissions:", userData);
+//       // ทดสอบดูข้อมูลที่จะส่งกลับ
+//       console.log("User data with permissions:", userData);
 
-      res.status(200).send({
-        result: true,
-        data: userData,
-        tokenKey: token,
-        message: "Login Success"
-      });
-    } else {
-      res.status(400).send({ result: false, message: "Invalid User or Password" });
-    }
-  } catch (err) {
-    console.log(err);
-    res.status(500).send({ message: "Internal Server Error!!" });
-  }
-};
+//       res.status(200).send({
+//         result: true,
+//         data: userData,
+//         tokenKey: token,
+//         message: "Login Success"
+//       });
+//     } else {
+//       res.status(400).send({ result: false, message: "Invalid User or Password" });
+//     }
+//   } catch (err) {
+//     console.log(err);
+//     res.status(500).send({ message: "Internal Server Error!!" });
+//   }
+// };
 
 exports.addUser = async (req, res) => {
   try {
@@ -229,5 +230,227 @@ exports.searchUserName = async (req, res) => {
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
+  }
+};
+
+exports.login = async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    // Find user with permissions included
+    const user = await userModel.findOne({
+      where: { username },
+      include: [
+        {
+          model: db.Tbl_typeuserpermission,
+          required: false
+        },
+        {
+          model: Tbl_TypeuserModel,
+          required: false
+        }
+      ]
+    });
+
+    // Verify user exists and password matches
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid username or password"
+      });
+    }
+
+    // If user doesn't have LINE UID, return special response
+    if (!user.line_uid) {
+      return res.json({
+        success: true,
+        requireLineLogin: true,
+        tempUserData: {
+          user_code: user.user_code,
+          username: user.username
+        }
+      });
+    }
+
+    // User has LINE UID, generate token and return success
+    const token = jwt.sign(
+      { username: user.username },
+      process.env.ENCRYPT_TOKEN_KEY,
+      { algorithm: 'HS256', expiresIn: '24h' }
+    );
+
+    res.json({
+      success: true,
+      data: user,
+      tokenKey: token,
+      userData2: user
+    });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
+};
+
+// Update LINE UID for user
+exports.updateLineUID = async (req, res) => {
+  try {
+    const { user_code, line_uid } = req.body;
+
+    const user = await userModel.findOne({
+      where: { user_code },
+      include: [
+        {
+          model: db.Tbl_typeuserpermission,
+          required: false
+        },
+        {
+          model: Tbl_TypeuserModel,
+          required: false
+        }
+      ]
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Update LINE UID
+    await userModel.update(
+      { line_uid },
+      { where: { user_code } }
+    );
+
+    // Get updated user data
+    const updatedUser = await userModel.findOne({
+      where: { user_code },
+      include: [
+        {
+          model: db.Tbl_typeuserpermission,
+          required: false
+        },
+        {
+          model: Tbl_TypeuserModel,
+          required: false
+        }
+      ]
+    });
+
+    // Generate token
+    const token = jwt.sign(
+      { username: updatedUser.username },
+      process.env.ENCRYPT_TOKEN_KEY,
+      { algorithm: 'HS256', expiresIn: '24h' }
+    );
+
+    res.json({
+      success: true,
+      data: updatedUser,
+      tokenKey: token,
+      userData2: updatedUser
+    });
+
+  } catch (error) {
+    console.error('Update LINE UID Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating LINE UID'
+    });
+  }
+};
+
+exports.lineCallback = async (req, res) => {
+  try {
+    const { code } = req.body;
+
+    // Exchange code for access token
+    const tokenResponse = await axios.post(
+      'https://api.line.me/oauth2/v2.1/token',
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: "https://weerainventory.com/liff",
+        client_id: '2006891227',
+        client_secret: '39009903d743bdd0eec0ab1a7637a087'
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
+
+    const { access_token } = tokenResponse.data;
+
+    // Get LINE profile
+    const profileResponse = await axios.get('https://api.line.me/v2/profile', {
+      headers: {
+        Authorization: `Bearer ${access_token}`
+      }
+    });
+
+    const lineProfile = profileResponse.data;
+
+    res.json({
+      success: true,
+      line_uid: lineProfile.userId
+    });
+
+  } catch (error) {
+    console.error('LINE Login Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'เกิดข้อผิดพลาดในการเข้าสู่ระบบด้วย LINE',
+      error: error.message
+    });
+  }
+};
+
+exports.checkLineUID = async (req, res) => {
+  try {
+    const { line_uid } = req.body;
+
+    const user = await userModel.findOne({
+      where: { line_uid },
+      include: [
+        {
+          model: db.Tbl_typeuserpermission,
+          required: false
+        },
+        {
+          model: Tbl_TypeuserModel,
+          required: false
+        }
+      ]
+    });
+
+    if (user) {
+      const token = jwt.sign(
+        { username: user.username },
+        process.env.ENCRYPT_TOKEN_KEY,
+        { algorithm: 'HS256', expiresIn: '24h' }
+      );
+
+      res.json({
+        exists: true,
+        token,
+        userData: user,
+        userData2: user  // เพิ่ม userData2
+      });
+    } else {
+      res.json({ exists: false });
+    }
+  } catch (error) {
+    console.error('Error checking LINE UID:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };

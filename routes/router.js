@@ -5,7 +5,10 @@ const {
   userAll,
   deleteUser,
   getlastusercode,
-  countUser
+  countUser,
+  // updateLineUID,
+  // checkLineUID,
+  // lineCallback
 } = require("../controllers/loginController");
 const {
   addtypeproduct,
@@ -533,8 +536,6 @@ const {
   Br_stockcardAll,
 } = require("../controllers/br_stockcardController")
 
-const lineAuthController = require('../controllers/lineAuthContoller')
-
 
 // const { checkAuth } = require("../middleware/checkAuth");
 const router = require("express").Router();
@@ -545,8 +546,6 @@ router.get("/testApi", (req, res) => {
   res.send("API Test Pass...........");
 });
 
-router.post('/callback', lineAuthController.lineCallback);
-
 
 router.post("/login", login);
 router.post("/addUser", addUser);
@@ -555,6 +554,9 @@ router.post("/userAll", userAll);
 router.post("/deleteUser", deleteUser);
 router.post('/getlastusercode', getlastusercode);
 router.post('/countUser', countUser);
+// router.post('/updateLineUID', updateLineUID);
+// router.post("/callback", lineCallback);
+// router.post("/checkLineUID", checkLineUID);
 
 // type_product
 router.post("/addTypeproduct", addtypeproduct);
