@@ -120,48 +120,95 @@ exports.updateKt_grf = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    const updateData = req.body;
+    const { headerData, productArrayData, footerData } = req.body;
 
-    const detailRecords = await Kt_grfdtModel.findAll({
-      where: { refno: updateData.refno },
+    // Delete existing detail records and stockcard entries
+    await Kt_grfdtModel.destroy({
+      where: { refno: headerData.refno },
       transaction: t
     });
 
-    const total = detailRecords.reduce((sum, record) => {
-      const qty = Number(record.qty || 0);
-      const uprice = Number(record.uprice || 0);
-      return sum + (qty * uprice);
-    }, 0);
+    await Kt_stockcard.destroy({
+      where: { refno: headerData.refno },
+      transaction: t
+    });
 
+    // Update header record
     const updateResult = await Kt_grfModel.update(
       {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh,
-        kitchen_code: updateData.kitchen_code,
-        total: updateData.total,
-        user_code: updateData.user_code,
+        rdate: headerData.rdate,
+        trdate: headerData.trdate,
+        myear: headerData.myear,
+        monthh: headerData.monthh,
+        kitchen_code: headerData.kitchen_code,
+        total: footerData.total,
+        user_code: headerData.user_code,
       },
       {
-        where: { refno: updateData.refno },
+        where: { refno: headerData.refno },
         transaction: t
       }
     );
 
-    // Update stockcard dates
-    await Kt_stockcard.update(
-      {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh
-      },
-      {
-        where: { refno: updateData.refno },
+    // Insert new detail records
+    await Kt_grfdtModel.bulkCreate(productArrayData, { transaction: t });
+
+    // Create new stockcard entries
+    for (const item of productArrayData) {
+      const stockcardRecords = await Kt_stockcard.findAll({
+        where: {
+          product_code: item.product_code,
+          kitchen_code: headerData.kitchen_code
+        },
+        order: [['rdate', 'DESC'], ['refno', 'DESC']],
+        raw: true,
         transaction: t
-      }
-    );
+      });
+
+      const totals = stockcardRecords.reduce((acc, record) => ({
+        beg1: acc.beg1 + Number(record.beg1 || 0),
+        in1: acc.in1 + Number(record.in1 || 0),
+        out1: acc.out1 + Number(record.out1 || 0),
+        upd1: acc.upd1 + Number(record.upd1 || 0),
+        beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
+        in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
+        out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
+        upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
+      }), {
+        beg1: 0, in1: 0, out1: 0, upd1: 0,
+        beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
+      });
+
+      const outAmount = Number(item.qty || 0);
+      const outPrice = Number(item.uprice || 0);
+      const outAmountValue = outAmount * outPrice;
+
+      const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
+      const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
+
+      await Kt_stockcard.create({
+        myear: headerData.myear,
+        monthh: headerData.monthh,
+        product_code: item.product_code,
+        kitchen_code: headerData.kitchen_code,
+        unit_code: item.unit_code,
+        refno: headerData.refno,
+        rdate: headerData.rdate,
+        trdate: headerData.trdate,
+        lotno: 0,
+        beg1: 0,
+        in1: 0,
+        out1: outAmount,
+        upd1: 0,
+        uprice: outPrice,
+        beg1_amt: 0,
+        in1_amt: 0,
+        out1_amt: outAmountValue,
+        upd1_amt: 0,
+        balance: previousBalance - outAmount,
+        balance_amount: previousBalanceAmount - outAmountValue
+      }, { transaction: t });
+    }
 
     await t.commit();
     res.status(200).send({
@@ -249,18 +296,41 @@ exports.Kt_grfAllrdate = async (req, res) => {
 exports.Kt_grfAlljoindt = async (req, res) => {
   try {
     const { offset, limit, rdate1, rdate2, kitchen_code, product_code } = req.body;
+    const { refno } = req.body; // Added to handle single refno lookup
 
     let whereClause = {};
 
-    if (rdate1 && rdate2) {
-      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    // If refno is provided, use that as the primary filter
+    if (refno) {
+      whereClause.refno = refno;
+    } else {
+      // Otherwise use the date range filters
+      if (rdate1 && rdate2) {
+        whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+      }
+
+      if (kitchen_code && kitchen_code !== '') {
+        whereClause.kitchen_code = kitchen_code;
+      }
     }
 
-    if (kitchen_code && kitchen_code !== '') {
-      whereClause.kitchen_code = kitchen_code;
+    // Only run the count query if we're doing a date range search (not a specific refno)
+    let totalCount = 0;
+    if (!refno && rdate1 && rdate2) {
+      // Create a proper query with replacements array
+      const totalResult = await sequelize.query(
+        'SELECT COUNT(refno) as count FROM kt_grf WHERE trdate BETWEEN ? AND ?',
+        {
+          replacements: [rdate1, rdate2],
+          type: sequelize.QueryTypes.SELECT
+        }
+      );
+
+      totalCount = totalResult[0].count;
     }
 
-    let kt_grf_headers = await Kt_grfModel.findAll({
+    // Fetch the header data
+    const kt_grf_headers = await Kt_grfModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'kitchen_code', 'total', 'user_code', 'created_at'
@@ -280,62 +350,22 @@ exports.Kt_grfAlljoindt = async (req, res) => {
       ],
       where: whereClause,
       order: [['refno', 'ASC']],
-      offset,
-      limit
+      offset: parseInt(offset) || 0,
+      limit: refno ? null : (parseInt(limit) || 10) // Don't limit if looking up by refno
     });
-
-    if (kt_grf_headers.length > 0) {
-      const refnos = kt_grf_headers.map(header => header.refno);
-
-      let whereDetailClause = {
-        refno: refnos
-      };
-
-      if (product_code && product_code !== '') {
-        whereDetailClause['$tbl_product.product_name$'] = {
-          [Op.like]: `%${product_code}%`
-        };
-      }
-
-      const details = await Kt_grfdtModel.findAll({
-        where: whereDetailClause,
-        include: [
-          {
-            model: Tbl_product,
-            attributes: ['product_code', 'product_name'],
-            required: true
-          },
-          {
-            model: unitModel,
-            attributes: ['unit_code', 'unit_name'],
-            required: false
-          }
-        ]
-      });
-
-      const detailsByRefno = {};
-      details.forEach(detail => {
-        if (!detailsByRefno[detail.refno]) {
-          detailsByRefno[detail.refno] = [];
-        }
-        detailsByRefno[detail.refno].push(detail);
-      });
-
-      kt_grf_headers = kt_grf_headers.map(header => {
-        const headerData = header.toJSON();
-        headerData.kt_grfdts = detailsByRefno[header.refno] || [];
-        return headerData;
-      });
-    }
 
     res.status(200).send({
       result: true,
-      data: kt_grf_headers
+      data: kt_grf_headers,
+      total: refno ? kt_grf_headers.length : totalCount
     });
 
   } catch (error) {
     console.error("Error in Kt_grfAlljoindt:", error);
-    res.status(500).send({ message: error.message });
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
@@ -375,13 +405,22 @@ exports.Kt_grfByRefno = async (req, res) => {
 
 exports.countKt_grf = async (req, res) => {
   try {
+    const { rdate } = req.body;
+
+    let whereClause = {
+      refno: {
+        [Op.gt]: 0,
+      }
+    };
+
+    if (rdate) {
+      whereClause.rdate = rdate;
+    }
+
     const amount = await Kt_grfModel.count({
-      where: {
-        refno: {
-          [Op.gt]: 0,
-        },
-      },
+      where: whereClause
     });
+
     res.status(200).send({ result: true, data: amount });
   } catch (error) {
     console.error(error);
@@ -410,18 +449,58 @@ exports.searchKt_grfrefno = async (req, res) => {
 
 exports.Kt_grfrefno = async (req, res) => {
   try {
-    const { month, year } = req.body;
+    const { kitchen_code, date } = req.body;
+
+    if (!kitchen_code) {
+      throw new Error('Kitchen code is required');
+    }
+
+    // Parse the date and format it as YYMM
+    const formattedDate = new Date(date);
+    const year = formattedDate.getFullYear().toString().slice(-2);
+    const month = String(formattedDate.getMonth() + 1).padStart(2, '0');
+    const dateStr = `${year}${month}`;
+
+    // Create the pattern for searching
+    const pattern = `KTGRF${kitchen_code}${dateStr}%`;
+
+    // Find the latest reference number for this kitchen and month
     const refno = await Kt_grfModel.findOne({
       where: {
-        monthh: month,
-        myear: `20${year}`
+        refno: {
+          [Op.like]: pattern
+        },
+        kitchen_code: kitchen_code
       },
       order: [['refno', 'DESC']],
     });
-    res.status(200).send({ result: true, data: refno });
+
+    // If no existing refno found, start with 001
+    if (!refno) {
+      const newRefno = `KTGRF${kitchen_code}${dateStr}001`;
+      res.status(200).send({
+        result: true,
+        data: { refno: newRefno }
+      });
+      return;
+    }
+
+    // Extract and increment the running number
+    const currentRunNo = parseInt(refno.refno.slice(-3));
+    const nextRunNo = (currentRunNo + 1).toString().padStart(3, '0');
+    const newRefno = `KTGRF${kitchen_code}${dateStr}${nextRunNo}`;
+
+    res.status(200).send({
+      result: true,
+      data: { refno: newRefno }
+    });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: error.message });
+    console.error('Generate refno error:', error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 

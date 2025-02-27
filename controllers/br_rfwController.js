@@ -283,7 +283,7 @@ exports.Br_rfwAllrdate = async (req, res) => {
 
 exports.Br_rfwAlljoindt = async (req, res) => {
   try {
-    const { offset, limit, rdate1, rdate2, rdate, branch_code, product_code } = req.body;
+    const { offset, limit, rdate1, rdate2, rdate, branch_code, product_code, supplier_code } = req.body;
     const { Op } = require("sequelize");
 
     let whereClause = {};
@@ -300,16 +300,25 @@ exports.Br_rfwAlljoindt = async (req, res) => {
       whereClause.branch_code = branch_code;
     }
 
+    if (supplier_code && supplier_code !== '') {
+      whereClause.supplier_code = supplier_code;
+    }
+
     let br_rfw_headers = await Br_rfwModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
-        'branch_code', 'taxable', 'nontaxable',
+        'branch_code', 'supplier_code', 'taxable', 'nontaxable',
         'total', 'user_code', 'created_at'
       ],
       include: [
         {
           model: Tbl_branch,
           attributes: ['branch_code', 'branch_name'],
+          required: false
+        },
+        {
+          model: Tbl_supplier,  // เพิ่ม supplier
+          attributes: ['supplier_code', 'supplier_name'],
           required: false
         },
         {
@@ -325,77 +334,16 @@ exports.Br_rfwAlljoindt = async (req, res) => {
       limit: limit
     });
 
-    if (br_rfw_headers.length > 0) {
-      const refnos = br_rfw_headers.map(header => header.refno);
-
-      let whereDetailClause = {
-        refno: refnos
-      };
-
-      if (product_code && product_code !== '') {
-        whereDetailClause = {
-          refno: refnos,
-          '$tbl_product.product_name$': { [Op.like]: `%${product_code}%` }
-        };
-      }
-
-      const details = await Br_rfwdtModel.findAll({
-        where: whereDetailClause,
-        include: [
-          {
-            model: Tbl_product,
-            attributes: ['product_code', 'product_name'],
-            required: true
-          },
-          {
-            model: unitModel,
-            attributes: ['unit_code', 'unit_name'],
-            required: false
-          }
-        ]
-      });
-
-      const stockcardInfo = await Br_stockcard.findAll({
-        where: { refno: refnos },
-        attributes: ['refno', 'product_code', 'balance', 'balance_amount']
-      });
-
-      const detailsByRefno = {};
-      details.forEach(detail => {
-        if (!detailsByRefno[detail.refno]) {
-          detailsByRefno[detail.refno] = [];
-        }
-        detailsByRefno[detail.refno].push(detail.toJSON());
-      });
-
-      const stockcardByRefnoAndProduct = {};
-      stockcardInfo.forEach(sc => {
-        if (!stockcardByRefnoAndProduct[sc.refno]) {
-          stockcardByRefnoAndProduct[sc.refno] = {};
-        }
-        stockcardByRefnoAndProduct[sc.refno][sc.product_code] = {
-          balance: sc.balance,
-          balance_amount: sc.balance_amount
-        };
-      });
-
+    // เพิ่มการตรวจสอบข้อมูล
+    if (br_rfw_headers) {
       br_rfw_headers = br_rfw_headers.map(header => {
         const headerData = header.toJSON();
-        const details = detailsByRefno[header.refno] || [];
-
-        headerData.br_rfwdts = details.map(detail => {
-          const stockcardData = stockcardByRefnoAndProduct[header.refno]?.[detail.product_code] || {
-            balance: 0,
-            balance_amount: 0
-          };
-          return {
-            ...detail,
-            balance: stockcardData.balance,
-            balance_amount: stockcardData.balance_amount
-          };
-        });
-
-        return headerData;
+        return {
+          ...headerData,
+          branch_name: headerData.tbl_branch?.branch_name || '-',
+          supplier_name: headerData.tbl_supplier?.supplier_name || '-',
+          username: headerData.user?.username || '-'
+        };
       });
     }
 

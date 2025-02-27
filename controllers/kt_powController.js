@@ -1,16 +1,16 @@
 const {
-  Kt_pow: kt_powModel,
-  Kt_powdt: kt_powdtModel,
+  Kt_pow: Kt_powModel,
+  Kt_powdt: Kt_powdtModel,
   Tbl_unit: unitModel,
   Tbl_supplier,
   sequelize,
   Tbl_product,
-  Tbl_branch,
+  Tbl_kitchen,
   User,
   Kt_stockcard,
-  Kt_product_lotno,
-  Tbl_kitchen
+  Kt_product_lotno
 } = require("../models/mainModel");
+const { Op } = require("sequelize");
 
 exports.addKt_pow = async (req, res) => {
   const t = await sequelize.transaction();
@@ -24,7 +24,7 @@ exports.addKt_pow = async (req, res) => {
     }
 
     try {
-      await kt_powModel.create({
+      await Kt_powModel.create({
         refno: headerData.refno,
         rdate: headerData.rdate,
         kitchen_code: headerData.kitchen_code,
@@ -38,7 +38,79 @@ exports.addKt_pow = async (req, res) => {
       }, { transaction: t });
 
       console.log("Create details:", productArrayData);
-      await kt_powdtModel.bulkCreate(productArrayData, { transaction: t });
+      await Kt_powdtModel.bulkCreate(productArrayData, { transaction: t });
+
+      for (const item of productArrayData) {
+        const stockcardRecords = await Kt_stockcard.findAll({
+          where: {
+            product_code: item.product_code,
+            kitchen_code: headerData.kitchen_code
+          },
+          order: [['rdate', 'DESC'], ['refno', 'DESC']],
+          raw: true,
+          transaction: t
+        });
+
+        const totals = stockcardRecords.reduce((acc, record) => ({
+          beg1: acc.beg1 + Number(record.beg1 || 0),
+          in1: acc.in1 + Number(record.in1 || 0),
+          out1: acc.out1 + Number(record.out1 || 0),
+          upd1: acc.upd1 + Number(record.upd1 || 0),
+          beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
+          in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
+          out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
+          upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
+        }), {
+          beg1: 0, in1: 0, out1: 0, upd1: 0,
+          beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
+        });
+
+        const newAmount = Number(item.qty || 0);
+        const newPrice = Number(item.uprice || 0);
+        const newAmountValue = newAmount * newPrice;
+
+        const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
+        const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
+
+        await Kt_stockcard.create({
+          myear: headerData.myear,
+          monthh: headerData.monthh,
+          product_code: item.product_code,
+          unit_code: item.unit_code,
+          refno: headerData.refno,
+          kitchen_code: headerData.kitchen_code,
+          rdate: headerData.rdate,
+          trdate: headerData.trdate,
+          lotno: 0,
+          beg1: 0,
+          in1: 0,
+          out1: newAmount,  // POW decreases stock
+          upd1: 0,
+          uprice: newPrice,
+          beg1_amt: 0,
+          in1_amt: 0,
+          out1_amt: newAmountValue,
+          upd1_amt: 0,
+          balance: previousBalance - newAmount,  // Subtract for POW
+          balance_amount: previousBalanceAmount - newAmountValue
+        }, { transaction: t });
+
+        const product = await Tbl_product.findOne({
+          where: { product_code: item.product_code },
+          attributes: ['lotno'],
+          transaction: t
+        });
+
+        const newLotno = (product?.lotno || 0) + 1;
+
+        await Tbl_product.update(
+          { lotno: newLotno },
+          {
+            where: { product_code: item.product_code },
+            transaction: t
+          }
+        );
+      }
 
       await t.commit();
       res.status(200).send({ result: true });
@@ -58,31 +130,67 @@ exports.updateKt_pow = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    await kt_powModel.update(
+    const updateData = req.body;
+
+    const detailRecords = await Kt_powdtModel.findAll({
+      where: { refno: updateData.refno },
+      transaction: t
+    });
+
+    const balance = detailRecords.reduce((sum, record) => sum - Number(record.qty || 0), 0); // Negative for POW
+    const balance_amount = detailRecords.reduce((sum, record) => {
+      const qty = Number(record.qty || 0);
+      const uprice = Number(record.uprice || 0);
+      return sum - (qty * uprice); // Negative for POW
+    }, 0);
+
+    const updateResult = await Kt_powModel.update(
       {
-        rdate: req.body.rdate,
-        trdate: req.body.trdate,
-        myear: req.body.myear,
-        monthh: req.body.monthh,
-        kitchen_code: req.body.kitchen_code,
-        taxable: req.body.taxable,
-        nontaxable: req.body.nontaxable,
-        total: req.body.total,
-        user_code: req.body.user_code
+        rdate: updateData.rdate,
+        trdate: updateData.trdate,
+        myear: updateData.myear,
+        monthh: updateData.monthh,
+        kitchen_code: updateData.kitchen_code,
+        taxable: updateData.taxable || 0,
+        nontaxable: updateData.nontaxable || 0,
+        total: updateData.total || 0,
+        user_code: updateData.user_code,
+        balance: balance,
+        balance_amount: balance_amount
       },
       {
-        where: { refno: req.body.refno },
+        where: { refno: updateData.refno },
+        transaction: t
+      }
+    );
+
+    await Kt_stockcard.update(
+      {
+        rdate: updateData.rdate,
+        trdate: updateData.trdate,
+        myear: updateData.myear,
+        monthh: updateData.monthh
+      },
+      {
+        where: { refno: updateData.refno },
         transaction: t
       }
     );
 
     await t.commit();
-    res.status(200).send({ result: true });
+    res.status(200).send({
+      result: true,
+      message: 'Updated successfully',
+      updatedRows: updateResult[0]
+    });
 
   } catch (error) {
     await t.rollback();
-    console.error('Error:', error);
-    res.status(500).send({ message: error.message });
+    console.error('Update Error:', error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
@@ -90,18 +198,37 @@ exports.deleteKt_pow = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    await kt_powModel.destroy({
-      where: { refno: req.body.refno },
+    const { refno } = req.body;
+
+    await Kt_powdtModel.destroy({
+      where: { refno },
+      transaction: t
+    });
+
+    await Kt_stockcard.destroy({
+      where: { refno },
+      transaction: t
+    });
+
+    const deleteResult = await Kt_powModel.destroy({
+      where: { refno },
       transaction: t
     });
 
     await t.commit();
-    res.status(200).send({ result: true });
+    res.status(200).send({
+      result: true,
+      message: 'Deleted successfully',
+      deletedRows: deleteResult
+    });
 
   } catch (error) {
     await t.rollback();
-    console.error('Error:', error);
-    res.status(500).send({ message: error.message });
+    console.error('Delete Error:', error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
@@ -110,26 +237,35 @@ exports.Kt_powAllrdate = async (req, res) => {
     const { offset, limit, rdate1, rdate2, kitchen_name } = req.body;
     const { Op } = require("sequelize");
 
-    let whereKitchen = { kitchen_name: { [Op.like]: '%' } };
+    let wherekitchen = { kitchen_name: { [Op.like]: '%' } };
     if (kitchen_name) {
-      whereKitchen = { kitchen_name: { [Op.like]: `%${kitchen_name}%` } };
+      wherekitchen = { kitchen_name: { [Op.like]: `%${kitchen_name}%` } };
     }
 
-    const kt_powShow = await kt_powModel.findAll({
+    const kt_powShow = await Kt_powModel.findAll({
       include: [
         {
-          model: Tbl_branch,
+          model: Tbl_kitchen,
           attributes: ['kitchen_code', 'kitchen_name'],
-          where: whereKitchen,
+          where: wherekitchen,
           required: true,
         }
       ],
       where: {
         trdate: { [Op.between]: [rdate1, rdate2] }
+      },
+      attributes: {
+        include: [
+          'balance',
+          'balance_amount'
+        ]
       }
     });
 
-    res.status(200).send({ result: true, data: kt_powShow });
+    res.status(200).send({
+      result: true,
+      data: kt_powShow
+    });
 
   } catch (error) {
     console.error('Error:', error);
@@ -139,109 +275,93 @@ exports.Kt_powAllrdate = async (req, res) => {
 
 exports.Kt_powAlljoindt = async (req, res) => {
   try {
-    const { offset, limit, rdate, kitchen_code, product_code } = req.body;
+    const { offset, limit, rdate, rdate1, rdate2, kitchen_code, product_code } = req.body;
     const { Op } = require("sequelize");
- 
+
     let whereClause = {};
-    let includeClause = [
-      {
-        model: Tbl_kitchen,
-        attributes: ['kitchen_code', 'kitchen_name'],
-        required: false
-      },
-      {
-        model: User,
-        as: 'user',
-        attributes: ['user_code', 'username'],
-        required: false
-      }
-    ];
- 
-    // Build where clause
+
     if (rdate) {
       whereClause.rdate = rdate;
     }
- 
-    if (kitchen_code && kitchen_code !== '') {
+
+    if (rdate1 && rdate2) {
+      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    }
+
+    if (kitchen_code) {
       whereClause.kitchen_code = kitchen_code;
     }
- 
-    // Add product search if needed
-    if (product_code && product_code !== '') {
-      includeClause.push({
-        model: kt_powdtModel,
-        required: true,
-        include: [{
-          model: Tbl_product,
-          required: true,
-          where: {
-            product_name: {
-              [Op.like]: `%${product_code}%`
-            }
-          }
-        }]
-      });
-    } else {
-      // If no product search, still include kt_powdt but without product filter
-      includeClause.push({
-        model: kt_powdtModel,
-        include: [{
-          model: Tbl_product
-        }]
-      });
-    }
- 
-    // Query for data with pagination
-    const kt_pow_headers = await kt_powModel.findAll({
+
+    let kt_pow_headers = await Kt_powModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'kitchen_code', 'taxable', 'nontaxable',
         'total', 'user_code', 'created_at'
       ],
+      include: [
+        {
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        },
+        {
+          model: Kt_powdtModel,
+          required: false,
+          include: [
+            {
+              model: Tbl_product,
+              attributes: ['product_code', 'product_name'],
+              required: false,
+              where: product_code ? {
+                product_name: { [Op.like]: `%${product_code}%` }
+              } : {}
+            },
+            {
+              model: unitModel,
+              attributes: ['unit_code', 'unit_name'],
+              required: false
+            }
+          ]
+        }
+      ],
       where: whereClause,
-      include: includeClause,
       order: [['refno', 'ASC']],
-      offset: parseInt(offset) || 0,
-      limit: parseInt(limit) || 10
+      offset,
+      limit
     });
- 
-    // Get total count for pagination
-    const total = await kt_powModel.count({
-      where: whereClause,
-      include: includeClause,
-      distinct: true,
-      col: 'refno'
+
+    // Transform data to include detail information
+    kt_pow_headers = kt_pow_headers.map(header => {
+      const headerData = header.toJSON();
+      headerData.kt_powdts = header.kt_powdts || [];
+      return headerData;
     });
- 
-    // Send response
-    if (kt_pow_headers.length > 0) {
-      res.status(200).send({
-        result: true,
-        data: kt_pow_headers,
-        count: total
-      });
-    } else {
-      res.status(200).send({
-        result: true,
-        data: [],
-        count: 0
-      });
-    }
- 
+
+    res.status(200).send({
+      result: true,
+      data: kt_pow_headers
+    });
+
   } catch (error) {
     console.error("Error in Kt_powAlljoindt:", error);
     res.status(500).send({ message: error.message });
   }
- };
+};
 
 exports.Kt_powByRefno = async (req, res) => {
   try {
     const { refno } = req.body;
 
-    const kt_powShow = await kt_powModel.findOne({
+    const kt_powShow = await Kt_powModel.findOne({
       include: [
         {
-          model: kt_powdtModel,
+          model: Kt_powdtModel,
           include: [{
             model: Tbl_product,
             include: [
@@ -278,7 +398,7 @@ exports.countKt_pow = async (req, res) => {
       whereClause.rdate = rdate;
     }
 
-    const amount = await kt_powModel.count({
+    const amount = await Kt_powModel.count({
       where: whereClause
     });
 
@@ -297,7 +417,7 @@ exports.searchKt_powrefno = async (req, res) => {
     const { Op } = require("sequelize");
     const { refno } = req.body;
 
-    const kt_powShow = await kt_powModel.findAll({
+    const kt_powShow = await Kt_powModel.findAll({
       where: {
         refno: {
           [Op.like]: `%${refno}%`
@@ -314,20 +434,64 @@ exports.searchKt_powrefno = async (req, res) => {
 
 exports.Kt_powrefno = async (req, res) => {
   try {
-    const refno = await kt_powModel.findOne({
-      order: [['refno', 'DESC']]
+    const { kitchen_code, date } = req.body;
+
+    if (!kitchen_code) {
+      throw new Error('Kitchen code is required');
+    }
+
+    // Parse the date and format it as YYMM
+    const formattedDate = new Date(date);
+    const year = formattedDate.getFullYear().toString().slice(-2);
+    const month = String(formattedDate.getMonth() + 1).padStart(2, '0');
+    const dateStr = `${year}${month}`;
+
+    // Create the pattern for searching
+    const pattern = `KTPOW${kitchen_code}${dateStr}%`;
+
+    // Find the latest reference number for this kitchen and month
+    const refno = await Kt_powModel.findOne({
+      where: {
+        refno: {
+          [Op.like]: pattern
+        },
+        kitchen_code: kitchen_code
+      },
+      order: [['refno', 'DESC']],
     });
-    console.log("lastrefno", refno);
-    res.status(200).send({ result: true, data: refno });
+
+    // If no existing refno found, start with 001
+    if (!refno) {
+      const newRefno = `KTPOW${kitchen_code}${dateStr}001`;
+      res.status(200).send({
+        result: true,
+        data: { refno: newRefno }
+      });
+      return;
+    }
+
+    // Extract and increment the running number
+    const currentRunNo = parseInt(refno.refno.slice(-3));
+    const nextRunNo = (currentRunNo + 1).toString().padStart(3, '0');
+    const newRefno = `KTPOW${kitchen_code}${dateStr}${nextRunNo}`;
+
+    res.status(200).send({
+      result: true,
+      data: { refno: newRefno }
+    });
+
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).send({ message: error.message });
+    console.error('Generate refno error:', error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
 exports.searchKt_powRunno = async (req, res) => {
   try {
-    const kt_powShow = await kt_powModel.findAll({
+    const kt_powShow = await Kt_powModel.findAll({
       where: {
         myear: req.body.myear,
         monthh: req.body.monthh

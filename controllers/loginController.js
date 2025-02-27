@@ -7,48 +7,58 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
 
-// exports.login = async (req, res) => {
-//   try {
-//     const { username, password } = req.body;
+exports.login = async (req, res) => {
+  try {
+    const { username, password } = req.body;
 
-//     if (!username || !password)
-//       return res
-//         .status(400)
-//         .send({ message: "Username and Password is Required!" });
+    if (!username || !password) {
+      return res.status(400).send({
+        success: false,
+        message: "Username and Password are required!"
+      });
+    }
 
-//     // เพิ่ม include Tbl_TypeuserpermissionModel
-//     const userData = await userModel.findOne({
-//       where: { username: username },
-//       include: [{
-//         model: db.Tbl_typeuserpermission,
-//         required: false
-//       }]
-//     });
+    const userData = await userModel.findOne({
+      where: { username: username },
+      include: [
+        {
+          model: db.Tbl_typeuserpermission,
+          required: false
+        },
+        {
+          model: Tbl_TypeuserModel,
+          required: false
+        }]
+    });
 
-//     if (userData && (await bcrypt.compare(password, userData.password))) {
-//       const token = jwt.sign(
-//         { username: userData.username, password: userData.password },
-//         process.env.ENCRYPT_TOKEN_KEY,
-//         { algorithm: 'HS256', expiresIn: 60 * 60 * 24 }
-//       );
+    if (userData && (await bcrypt.compare(password, userData.password))) {
+      const token = jwt.sign(
+        { username: userData.username },
+        process.env.ENCRYPT_TOKEN_KEY,
+        { algorithm: 'HS256', expiresIn: '24h' }
+      );
 
-//       // ทดสอบดูข้อมูลที่จะส่งกลับ
-//       console.log("User data with permissions:", userData);
-
-//       res.status(200).send({
-//         result: true,
-//         data: userData,
-//         tokenKey: token,
-//         message: "Login Success"
-//       });
-//     } else {
-//       res.status(400).send({ result: false, message: "Invalid User or Password" });
-//     }
-//   } catch (err) {
-//     console.log(err);
-//     res.status(500).send({ message: "Internal Server Error!!" });
-//   }
-// };
+      res.status(200).send({
+        success: true,
+        data: userData,
+        userData2: userData,  // Include userData2
+        tokenKey: token,
+        message: "Login successful"
+      });
+    } else {
+      res.status(400).send({
+        success: false,
+        message: "Invalid username or password"
+      });
+    }
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).send({
+      success: false,
+      message: "Internal server error"
+    });
+  }
+};
 
 exports.addUser = async (req, res) => {
   try {
@@ -233,67 +243,67 @@ exports.searchUserName = async (req, res) => {
   }
 };
 
-exports.login = async (req, res) => {
-  try {
-    const { username, password } = req.body;
+// exports.login = async (req, res) => {
+//   try {
+//     const { username, password } = req.body;
 
-    // Find user with permissions included
-    const user = await userModel.findOne({
-      where: { username },
-      include: [
-        {
-          model: db.Tbl_typeuserpermission,
-          required: false
-        },
-        {
-          model: Tbl_TypeuserModel,
-          required: false
-        }
-      ]
-    });
+//     // Find user with permissions included
+//     const user = await userModel.findOne({
+//       where: { username },
+//       include: [
+//         {
+//           model: db.Tbl_typeuserpermission,
+//           required: false
+//         },
+//         {
+//           model: Tbl_TypeuserModel,
+//           required: false
+//         }
+//       ]
+//     });
 
-    // Verify user exists and password matches
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid username or password"
-      });
-    }
+//     // Verify user exists and password matches
+//     if (!user || !(await bcrypt.compare(password, user.password))) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid username or password"
+//       });
+//     }
 
-    // If user doesn't have LINE UID, return special response
-    if (!user.line_uid) {
-      return res.json({
-        success: true,
-        requireLineLogin: true,
-        tempUserData: {
-          user_code: user.user_code,
-          username: user.username
-        }
-      });
-    }
+//     // If user doesn't have LINE UID, return special response
+//     if (!user.line_uid) {
+//       return res.json({
+//         success: true,
+//         requireLineLogin: true,
+//         tempUserData: {
+//           user_code: user.user_code,
+//           username: user.username
+//         }
+//       });
+//     }
 
-    // User has LINE UID, generate token and return success
-    const token = jwt.sign(
-      { username: user.username },
-      process.env.ENCRYPT_TOKEN_KEY,
-      { algorithm: 'HS256', expiresIn: '24h' }
-    );
+//     // User has LINE UID, generate token and return success
+//     const token = jwt.sign(
+//       { username: user.username },
+//       process.env.ENCRYPT_TOKEN_KEY,
+//       { algorithm: 'HS256', expiresIn: '24h' }
+//     );
 
-    res.json({
-      success: true,
-      data: user,
-      tokenKey: token,
-      userData2: user
-    });
+//     res.json({
+//       success: true,
+//       data: user,
+//       tokenKey: token,
+//       userData2: user
+//     });
 
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error"
-    });
-  }
-};
+//   } catch (error) {
+//     console.error('Login error:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Internal server error"
+//     });
+//   }
+// };
 
 // Update LINE UID for user
 exports.updateLineUID = async (req, res) => {

@@ -248,79 +248,76 @@ exports.Br_grfAllrdate = async (req, res) => {
 exports.Br_grfAlljoindt = async (req, res) => {
   try {
     const { offset, limit, rdate1, rdate2, branch_code, product_code } = req.body;
+    const { refno } = req.body; // Added to handle single refno lookup
 
     let whereClause = {};
 
-    if (rdate1 && rdate2) {
-      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
-    }
-
-    if (branch_code && branch_code !== '') {
-      whereClause.branch_code = branch_code;
-    }
-
-    let includes = [
-      {
-        model: Tbl_branch,
-        attributes: ['branch_code', 'branch_name'],
-        required: false
-      },
-      {
-        model: User,
-        as: 'user',
-        attributes: ['user_code', 'username'],
-        required: false
-      },
-      {
-        model: Br_grfdtModel,
-        required: false,
-        include: [
-          {
-            model: unitModel,
-            attributes: ['unit_code', 'unit_name'],
-            required: false
-          }
-        ]
-      }
-    ];
-
-    if (product_code) {
-      includes[2].include.push({
-        model: Tbl_product,
-        attributes: ['product_code', 'product_name'],
-        required: false,
-        where: {
-          product_name: { [Op.like]: `%${product_code}%` }
-        }
-      });
+    // If refno is provided, use that as the primary filter
+    if (refno) {
+      whereClause.refno = refno;
     } else {
-      includes[2].include.push({
-        model: Tbl_product,
-        attributes: ['product_code', 'product_name'],
-        required: false
-      });
+      // Otherwise use the date range filters
+      if (rdate1 && rdate2) {
+        whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+      }
+
+      if (branch_code && branch_code !== '') {
+        whereClause.branch_code = branch_code;
+      }
     }
 
+    // Only run the count query if we're doing a date range search (not a specific refno)
+    let totalCount = 0;
+    if (!refno && rdate1 && rdate2) {
+      // Create a proper query with replacements array
+      const totalResult = await sequelize.query(
+        'SELECT COUNT(refno) as count FROM br_grf WHERE trdate BETWEEN ? AND ?',
+        {
+          replacements: [rdate1, rdate2],
+          type: sequelize.QueryTypes.SELECT
+        }
+      );
+
+      totalCount = totalResult[0].count;
+    }
+
+    // Fetch the header data
     const br_grf_headers = await Br_grfModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'branch_code', 'total', 'user_code', 'created_at'
       ],
-      include: includes,
+      include: [
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
       where: whereClause,
       order: [['refno', 'ASC']],
-      offset,
-      limit
+      offset: parseInt(offset) || 0,
+      limit: refno ? null : (parseInt(limit) || 10) // Don't limit if looking up by refno
     });
 
     res.status(200).send({
       result: true,
-      data: br_grf_headers
+      data: br_grf_headers,
+      total: refno ? br_grf_headers.length : totalCount
     });
 
   } catch (error) {
     console.error("Error in Br_grfAlljoindt:", error);
-    res.status(500).send({ message: error.message });
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
@@ -404,18 +401,58 @@ exports.searchBr_grfrefno = async (req, res) => {
 
 exports.Br_grfrefno = async (req, res) => {
   try {
-    const { month, year } = req.body;
+    const { branch_code, date } = req.body;
+
+    if (!branch_code) {
+      throw new Error('Branch code is required');
+    }
+
+    // Parse the date and format it as YYMM
+    const formattedDate = new Date(date);
+    const year = formattedDate.getFullYear().toString().slice(-2);
+    const month = String(formattedDate.getMonth() + 1).padStart(2, '0');
+    const dateStr = `${year}${month}`;
+
+    // Create the pattern for searching
+    const pattern = `BRGRF${branch_code}${dateStr}%`;
+
+    // Find the latest reference number for this branch and month
     const refno = await Br_grfModel.findOne({
       where: {
-        monthh: month,
-        myear: `20${year}`
+        refno: {
+          [Op.like]: pattern
+        },
+        branch_code: branch_code
       },
       order: [['refno', 'DESC']],
     });
-    res.status(200).send({ result: true, data: refno });
+
+    // If no existing refno found, start with 001
+    if (!refno) {
+      const newRefno = `BRGRF${branch_code}${dateStr}001`;
+      res.status(200).send({
+        result: true,
+        data: { refno: newRefno }
+      });
+      return;
+    }
+
+    // Extract and increment the running number
+    const currentRunNo = parseInt(refno.refno.slice(-3));
+    const nextRunNo = (currentRunNo + 1).toString().padStart(3, '0');
+    const newRefno = `BRGRF${branch_code}${dateStr}${nextRunNo}`;
+
+    res.status(200).send({
+      result: true,
+      data: { refno: newRefno }
+    });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: error.message });
+    console.error('Generate refno error:', error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 

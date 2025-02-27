@@ -797,6 +797,16 @@ db.Tbl_product.hasMany(db.Kt_rfwdt, {
   sourceKey: 'product_code', // sourceKey ของ Product
 });
 
+db.Kt_rfw.belongsTo(db.Tbl_supplier, {
+  foreignKey: 'supplier_code',
+  targetKey: 'supplier_code'
+});
+
+db.Tbl_supplier.hasMany(db.Kt_rfw, {
+  foreignKey: 'supplier_code',
+  sourceKey: 'supplier_code'
+});
+
 // ใบเบิกสินค้า
 
 // *********************แก้ไขใหม่*********************
@@ -844,6 +854,17 @@ db.Tbl_product.hasMany(db.Kt_grfdt, {
   sourceKey: 'product_code', // sourceKey ของ Product
 });
 
+db.Kt_grf.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Kt_grf, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'kt_grf'
+});
 
 // ใบรับสินค้าจากการผลิต
 
@@ -1390,6 +1411,16 @@ db.Br_rfwdt.belongsTo(db.Tbl_product, {
 db.Tbl_product.hasMany(db.Br_rfwdt, {
   foreignKey: 'product_code',  // foreignKey ของ Type Product
   sourceKey: 'product_code', // sourceKey ของ Product
+});
+
+db.Br_rfw.belongsTo(db.Tbl_supplier, {
+  foreignKey: 'supplier_code',
+  targetKey: 'supplier_code'
+});
+
+db.Tbl_supplier.hasMany(db.Br_rfw, {
+  foreignKey: 'supplier_code',
+  sourceKey: 'supplier_code'
 });
 
 // ใบรับสินค้าจากครัวกลาง

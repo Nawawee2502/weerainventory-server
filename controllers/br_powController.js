@@ -10,6 +10,8 @@ const {
   Br_stockcard,
   Br_product_lotno
 } = require("../models/mainModel");
+const { Op } = require("sequelize");
+
 
 exports.addBr_pow = async (req, res) => {
   const t = await sequelize.transaction();
@@ -455,14 +457,59 @@ exports.searchBr_powrefno = async (req, res) => {
 
 exports.Br_powrefno = async (req, res) => {
   try {
+    const { branch_code, supplier_code, date } = req.body;
+
+    if (!branch_code || !supplier_code) {
+      throw new Error('Branch code and supplier code are required');
+    }
+
+    // Parse the date and format it as YYMM
+    const formattedDate = new Date(date);
+    const year = formattedDate.getFullYear().toString().slice(-2);
+    const month = String(formattedDate.getMonth() + 1).padStart(2, '0');
+    const dateStr = `${year}${month}`;
+
+    // Create the pattern for searching
+    const pattern = `BRPOW${branch_code}${supplier_code}${dateStr}%`;
+
+    // Find the latest reference number for this branch, supplier and month
     const refno = await Br_powModel.findOne({
-      order: [['refno', 'DESC']]
+      where: {
+        refno: {
+          [Op.like]: pattern
+        },
+        branch_code: branch_code,
+        supplier_code: supplier_code
+      },
+      order: [['refno', 'DESC']],
     });
-    console.log("lastrefno", refno);
-    res.status(200).send({ result: true, data: refno });
+
+    // If no existing refno found, start with 001
+    if (!refno) {
+      const newRefno = `BRPOW${branch_code}${supplier_code}${dateStr}001`;
+      res.status(200).send({
+        result: true,
+        data: { refno: newRefno }
+      });
+      return;
+    }
+
+    // Extract and increment the running number
+    const currentRunNo = parseInt(refno.refno.slice(-3));
+    const nextRunNo = (currentRunNo + 1).toString().padStart(3, '0');
+    const newRefno = `BRPOW${branch_code}${supplier_code}${dateStr}${nextRunNo}`;
+
+    res.status(200).send({
+      result: true,
+      data: { refno: newRefno }
+    });
+
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).send({ message: error.message });
+    console.error('Generate refno error:', error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
