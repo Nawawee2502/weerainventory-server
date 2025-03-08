@@ -118,28 +118,74 @@ exports.addKt_dpb = async (req, res) => {
 
 
 exports.updateKt_dpb = async (req, res) => {
-  try {
-    Kt_dpbModel.update(
-      {
-        rdate: req.body.rdate, //19/10/2024
-        trdate: req.body.trdate, //20241019
-        myear: req.body.myear, // 2024
-        monthh: req.body.monthh, //10
-        kitchen_code: req.body.kitchen_code,
-        branch_code: req.body.branch_code,
-        taxable: req.body.taxable,
-        nontaxable: req.body.nontaxable,
-        total: req.body.total,
-        user_code: req.body.user_code,
-      },
-      { where: { refno: req.body.refno } }
-    );
-    res.status(200).send({ result: true })
-  } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
-  }
+  const t = await sequelize.transaction();
 
+  try {
+    const { headerData, productArrayData, footerData } = req.body;
+
+    if (!headerData || !headerData.refno) {
+      throw new Error('Missing refno in header data');
+    }
+
+    // อัพเดทข้อมูลส่วนหัว
+    await Kt_dpbModel.update(
+      {
+        rdate: headerData.rdate,
+        trdate: headerData.trdate,
+        myear: headerData.myear,
+        monthh: headerData.monthh,
+        kitchen_code: headerData.kitchen_code,
+        branch_code: headerData.branch_code,
+        taxable: headerData.taxable || 0,
+        nontaxable: headerData.nontaxable || 0,
+        total: footerData.total || 0,
+        user_code: headerData.user_code
+      },
+      {
+        where: { refno: headerData.refno },
+        transaction: t
+      }
+    );
+
+    // ลบข้อมูลสินค้าเก่าทั้งหมด
+    await Kt_dpbdtModel.destroy({
+      where: { refno: headerData.refno },
+      transaction: t
+    });
+
+    // เพิ่มข้อมูลสินค้าใหม่
+    if (Array.isArray(productArrayData) && productArrayData.length > 0) {
+      await Kt_dpbdtModel.bulkCreate(productArrayData, { transaction: t });
+    }
+
+    // อัพเดท stockcard (ถ้าจำเป็น)
+    await Kt_stockcard.update(
+      {
+        rdate: headerData.rdate,
+        trdate: headerData.trdate,
+        myear: headerData.myear,
+        monthh: headerData.monthh
+      },
+      {
+        where: { refno: headerData.refno },
+        transaction: t
+      }
+    );
+
+    await t.commit();
+    res.status(200).json({
+      result: true,
+      message: 'Updated successfully'
+    });
+
+  } catch (error) {
+    await t.rollback();
+    console.error('Update Error:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'Failed to update dispatch'
+    });
+  }
 };
 
 
@@ -298,10 +344,25 @@ exports.Kt_dpbAlljoindt = async (req, res) => {
   }
 };
 
-// *********************แก้ไขใหม่********************* 
 exports.Kt_dpbByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    // ปรับวิธีการเข้าถึง refno
+    let refnoValue = req.body.refno;
+
+    // ตรวจสอบว่า refno เป็น object หรือไม่
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+      console.log('Extracted refno from object:', refnoValue);
+    }
+
+    console.log('Processing refno:', refnoValue, 'Type:', typeof refnoValue);
+
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'Refno is required (not found or empty)'
+      });
+    }
 
     const Kt_dpbShow = await Kt_dpbModel.findOne({
       include: [
@@ -313,26 +374,44 @@ exports.Kt_dpbByRefno = async (req, res) => {
               {
                 model: unitModel,
                 as: 'productUnit1',
-                required: true,
+                required: false
               },
               {
                 model: unitModel,
                 as: 'productUnit2',
-                required: true,
-              },
-            ],
-          }],
-          // as: "postoposdt",
-          // required: true,
+                required: false
+              }
+            ]
+          }]
         },
+        {
+          model: Tbl_kitchen,
+          required: false
+        },
+        {
+          model: Tbl_branch,
+          required: false
+        }
       ],
-      where: { refno: refno }
-      // offset:offset,limit:limit 
+      where: { refno: refnoValue }
     });
-    res.status(200).send({ result: true, data: Kt_dpbShow })
+
+    if (!Kt_dpbShow) {
+      console.log('No data found for refno:', refnoValue);
+      return res.status(404).json({
+        result: false,
+        message: 'Dispatch not found'
+      });
+    }
+
+    res.status(200).json({ result: true, data: Kt_dpbShow });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.error('Error in Kt_dpbByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'Failed to fetch dispatch details',
+      stack: error.stack
+    });
   }
 };
 

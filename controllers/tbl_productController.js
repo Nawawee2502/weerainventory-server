@@ -137,7 +137,23 @@ exports.searchProductsForImage = async (req, res) => {
 
 exports.addproduct = async (req, res) => {
   try {
-    tbl_productModel.create({
+    // Check if product name already exists
+    const existingProduct = await tbl_productModel.findOne({
+      where: {
+        product_name: req.body.product_name
+      }
+    });
+
+    // If product name exists, return error
+    if (existingProduct) {
+      return res.status(400).send({
+        result: false,
+        message: "Product name already exists. Please use a different name."
+      });
+    }
+
+    // If product name doesn't exist, create new product
+    await tbl_productModel.create({
       product_img: req.body.product_img,
       product_code: req.body.product_code,
       product_name: req.body.product_name,
@@ -147,12 +163,14 @@ exports.addproduct = async (req, res) => {
       retail_unit_code: req.body.retail_unit_code,
       retail_unit_price: req.body.retail_unit_price,
       unit_conversion_factor: req.body.unit_conversion_factor,
-    })
-    res.status(200).send({ result: true })
+      tax1: req.body.tax1
+    });
+
+    res.status(200).send({ result: true });
 
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.log(error);
+    res.status(500).send({ result: false, message: error.message });
   }
 };
 

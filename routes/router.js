@@ -404,7 +404,7 @@ const {
   updateBr_minnum_stock,
   deleteBr_minnum_stock,
   Query_Br_minnum_stock,
-  Br_minnum_stockAlltypeproduct,
+  SearchBr_minnum_stock,
   countBr_minnum_stock,
 } = require("../controllers/br_minnum_stockContrller")
 
@@ -859,7 +859,7 @@ router.post("/addkt_dpbdt", addKt_dpbdt);
 router.post("/updateKt_dpbdt", updateKt_dpbdt);
 router.post("/deleteKt_dpbdt", deleteKt_dpbdt);
 router.post("/countKt_dpbdt", countKt_dpbdt);
-router.post("/Kt_dpbtAlljoindt", Kt_dpbdtAlljoindt)
+router.post("/Kt_dpbdtAlljoindt", Kt_dpbdtAlljoindt)
 
 //ใบปรับปรุงสินค้า
 router.post("/addKt_saf", addKt_saf);
@@ -888,7 +888,7 @@ router.post("/addBr_minnum_stock", addBr_minnum_stock);
 router.post("/updateBr_minnum_stock", updateBr_minnum_stock);
 router.post("/deleteBr_minnum_stock", deleteBr_minnum_stock);
 router.post("/Query_Br_minnum_stock", Query_Br_minnum_stock);
-router.post("/Br_minnum_stockAlltypeproduct", Br_minnum_stockAlltypeproduct);
+router.post("/SearchBr_minnum_stock", SearchBr_minnum_stock);
 router.post("/countBr_minnum_stock", countBr_minnum_stock);
 
 // สาขา ใบปรับปรุงสินค้า

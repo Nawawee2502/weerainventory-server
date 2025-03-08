@@ -301,34 +301,42 @@ exports.Br_rfsAllrdate = async (req, res) => {
 exports.Br_rfsAlljoindt = async (req, res) => {
   try {
     const { offset, limit, rdate1, rdate2, rdate, supplier_code, branch_code, product_code } = req.body;
+    const { refno } = req.body; // Added to handle single refno lookup
 
     let whereClause = {};
-    if (rdate) whereClause.rdate = rdate;
-    if (rdate1 && rdate2) whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
-    if (supplier_code) whereClause.supplier_code = supplier_code;
-    if (branch_code) whereClause.branch_code = branch_code;
 
-    let productWhere = {};
-    if (product_code) {
-      productWhere = {
-        product_name: { [Op.like]: `%${product_code}%` }
-      };
+    // If refno is provided, use that as the primary filter
+    if (refno) {
+      whereClause.refno = refno;
+    } else {
+      // Otherwise use the date range filters
+      if (rdate) whereClause.rdate = rdate;
+      if (rdate1 && rdate2) whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+      if (supplier_code) whereClause.supplier_code = supplier_code;
+      if (branch_code) whereClause.branch_code = branch_code;
     }
 
+    // Only run the count query if we're doing a date range search (not a specific refno)
+    let totalCount = 0;
+    if (!refno && rdate1 && rdate2) {
+      // Create a proper query with replacements array
+      const totalResult = await sequelize.query(
+        'SELECT COUNT(refno) as count FROM br_rfs WHERE trdate BETWEEN ? AND ?',
+        {
+          replacements: [rdate1, rdate2],
+          type: sequelize.QueryTypes.SELECT
+        }
+      );
+
+      totalCount = totalResult[0].count;
+    }
+
+    // Fetch the header data
     const br_rfs_headers = await br_rfsModel.findAll({
       attributes: [
-        'refno',
-        'rdate',
-        'trdate',
-        'myear',
-        'monthh',
-        'supplier_code',
-        'branch_code',
-        'taxable',
-        'nontaxable',
-        'total',
-        'user_code',
-        'created_at'
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'supplier_code', 'branch_code', 'taxable', 'nontaxable',
+        'total', 'user_code', 'created_at'
       ],
       include: [
         {
@@ -346,34 +354,18 @@ exports.Br_rfsAlljoindt = async (req, res) => {
           as: 'user',
           attributes: ['user_code', 'username'],
           required: false
-        },
-        {
-          model: br_rfsdtModel,
-          required: false,
-          include: [
-            {
-              model: Tbl_product,
-              attributes: ['product_code', 'product_name'],
-              required: false,
-              where: productWhere
-            },
-            {
-              model: Tbl_unit,
-              attributes: ['unit_code', 'unit_name'],
-              required: false
-            }
-          ]
         }
       ],
       where: whereClause,
       order: [['refno', 'ASC']],
-      offset: parseInt(offset, 10),
-      limit: parseInt(limit, 10)
+      offset: parseInt(offset) || 0,
+      limit: refno ? null : (parseInt(limit) || 10) // Don't limit if looking up by refno
     });
 
     res.status(200).send({
       result: true,
-      data: br_rfs_headers
+      data: br_rfs_headers,
+      total: refno ? br_rfs_headers.length : totalCount
     });
 
   } catch (error) {

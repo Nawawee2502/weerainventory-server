@@ -7,117 +7,128 @@ exports.addBr_stockcard = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
+    console.log("Incoming request body:", req.body);
+
     // Validate required fields
     if (!req.body.product_code || !req.body.rdate || !req.body.trdate) {
       throw new Error('Missing required fields: product_code, rdate, or trdate');
     }
 
-    // Check for existing record
-    const existingRecord = await Br_stockcardModel.findOne({
-      where: {
-        product_code: req.body.product_code,
-        rdate: req.body.rdate,
-        trdate: req.body.trdate
-      },
-      transaction: t
-    });
-
-    if (existingRecord) {
-      await t.rollback();
-      return res.status(400).send({
-        result: false,
-        message: `This product has already been added on ${req.body.rdate}`,
-        type: 'DUPLICATE_RECORD'
+    try {
+      // Check for existing record
+      const existingRecord = await Br_stockcardModel.findOne({
+        where: {
+          product_code: req.body.product_code,
+          rdate: req.body.rdate,
+          trdate: req.body.trdate
+        },
+        transaction: t
       });
+
+      if (existingRecord) {
+        await t.rollback();
+        return res.status(400).send({
+          result: false,
+          message: `This product has already been added on ${req.body.rdate}`,
+          type: 'DUPLICATE_RECORD'
+        });
+      }
+
+      // Get all previous records for this product to calculate running totals
+      const stockcardRecords = await Br_stockcardModel.findAll({
+        where: { product_code: req.body.product_code },
+        order: [
+          ['rdate', 'DESC'],
+          ['refno', 'DESC']
+        ],
+        raw: true,
+        transaction: t
+      });
+
+      // Calculate previous totals
+      const totals = stockcardRecords.reduce((acc, record) => {
+        return {
+          beg1: acc.beg1 + Number(record.beg1 || 0),
+          in1: acc.in1 + Number(record.in1 || 0),
+          out1: acc.out1 + Number(record.out1 || 0),
+          upd1: acc.upd1 + Number(record.upd1 || 0),
+          beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
+          in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
+          out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
+          upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
+        };
+      }, {
+        beg1: 0, in1: 0, out1: 0, upd1: 0,
+        beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
+      });
+
+      // Calculate new values
+      const newBeg1 = Number(req.body.beg1 || 0);
+      const newIn1 = Number(req.body.in1 || 0);
+      const newOut1 = Number(req.body.out1 || 0);
+      const newUpd1 = Number(req.body.upd1 || 0);
+      const newPrice = Number(req.body.uprice || 0);
+
+      // Calculate monetary values
+      const beg1_amt = newBeg1 * newPrice;
+      const in1_amt = newIn1 * newPrice;
+      const out1_amt = newOut1 * newPrice;
+      const upd1_amt = newUpd1 * newPrice;
+
+      // Calculate running balances
+      const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
+      const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
+
+      const currentTransactionBalance = newBeg1 + newIn1 + newUpd1 - newOut1;
+      const currentTransactionAmount = beg1_amt + in1_amt + upd1_amt - out1_amt;
+
+      const finalBalance = previousBalance + currentTransactionBalance;
+      const finalBalanceAmount = previousBalanceAmount + currentTransactionAmount;
+
+      // Create stockcard record with calculated values
+      const stockcardRecord = await Br_stockcardModel.create({
+        myear: req.body.myear,
+        monthh: req.body.monthh,
+        product_code: req.body.product_code,
+        unit_code: req.body.unit_code,
+        branch_code: req.body.branch_code,
+        refno: req.body.refno,
+        rdate: req.body.rdate,
+        trdate: req.body.trdate,
+        lotno: req.body.lotno || 0,
+        beg1: newBeg1,
+        in1: newIn1,
+        out1: newOut1,
+        upd1: newUpd1,
+        uprice: newPrice,
+        beg1_amt: beg1_amt,
+        in1_amt: in1_amt,
+        out1_amt: out1_amt,
+        upd1_amt: upd1_amt,
+        balance: finalBalance,
+        balance_amount: finalBalanceAmount
+      }, { transaction: t });
+
+      console.log("Created stockcard record:", stockcardRecord);
+
+      await t.commit();
+      res.status(200).send({
+        result: true,
+        message: 'Created successfully',
+        data: stockcardRecord
+      });
+
+    } catch (error) {
+      await t.rollback();
+      throw error;
     }
 
-    // Get all previous records for this product to calculate running totals
-    const stockcardRecords = await Br_stockcardModel.findAll({
-      where: { product_code: req.body.product_code },
-      order: [
-        ['rdate', 'DESC'],
-        ['refno', 'DESC']
-      ],
-      raw: true,
-      transaction: t
-    });
-
-    // Calculate previous totals
-    const totals = stockcardRecords.reduce((acc, record) => {
-      return {
-        beg1: acc.beg1 + Number(record.beg1 || 0),
-        in1: acc.in1 + Number(record.in1 || 0),
-        out1: acc.out1 + Number(record.out1 || 0),
-        upd1: acc.upd1 + Number(record.upd1 || 0),
-        beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
-        in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
-        out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
-        upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
-      };
-    }, {
-      beg1: 0, in1: 0, out1: 0, upd1: 0,
-      beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
-    });
-
-    // Calculate new values
-    const newBeg1 = Number(req.body.beg1 || 0);
-    const newIn1 = Number(req.body.in1 || 0);
-    const newOut1 = Number(req.body.out1 || 0);
-    const newUpd1 = Number(req.body.upd1 || 0);
-    const newPrice = Number(req.body.uprice || 0);
-
-    // Calculate monetary values
-    const beg1_amt = newBeg1 * newPrice;
-    const in1_amt = newIn1 * newPrice;
-    const out1_amt = newOut1 * newPrice;
-    const upd1_amt = newUpd1 * newPrice;
-
-    // Calculate running balances
-    const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
-    const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
-
-    const currentTransactionBalance = newBeg1 + newIn1 + newUpd1 - newOut1;
-    const currentTransactionAmount = beg1_amt + in1_amt + upd1_amt - out1_amt;
-
-    const finalBalance = previousBalance + currentTransactionBalance;
-    const finalBalanceAmount = previousBalanceAmount + currentTransactionAmount;
-
-    const stockcardRecord = await Br_stockcardModel.create({
-      myear: req.body.myear,
-      monthh: req.body.monthh,
-      product_code: req.body.product_code,
-      unit_code: req.body.unit_code,
-      branch_code: req.body.branch_code,
-      refno: req.body.refno,
-      rdate: req.body.rdate,
-      trdate: req.body.trdate,
-      lotno: req.body.lotno || 0,
-      beg1: newBeg1,
-      in1: newIn1,
-      out1: newOut1,
-      upd1: newUpd1,
-      uprice: newPrice,
-      beg1_amt: beg1_amt,
-      in1_amt: in1_amt,
-      out1_amt: out1_amt,
-      upd1_amt: upd1_amt,
-      balance: finalBalance,
-      balance_amount: finalBalanceAmount
-    }, { transaction: t });
-
-    await t.commit();
-    res.status(200).send({
-      result: true,
-      message: 'Created successfully',
-      data: stockcardRecord
-    });
-
   } catch (error) {
-    await t.rollback();
     console.error("Error in addBr_stockcard:", error);
     res.status(500).send({
       result: false,
-      message: error.message
+      message: error.message,
+      errorDetail: error.stack
     });
   }
 };
@@ -126,6 +137,15 @@ exports.updateBr_stockcard = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
+    console.log("Update Request Body:", req.body);
+
+    // Calculate new balance and balance_amount
+    const newBeg1 = Number(req.body.beg1 || 0);
+    const newIn1 = Number(req.body.in1 || 0);
+    const newOut1 = Number(req.body.out1 || 0);
+    const newUpd1 = Number(req.body.upd1 || 0);
+    const newPrice = Number(req.body.uprice || 0);
+
     // Get all previous records except current record
     const stockcardRecords = await Br_stockcardModel.findAll({
       where: {
@@ -159,20 +179,17 @@ exports.updateBr_stockcard = async (req, res) => {
       beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
     });
 
-    // Calculate new values for current record
-    const newBeg1 = Number(req.body.beg1 || 0);
-    const newIn1 = Number(req.body.in1 || 0);
-    const newOut1 = Number(req.body.out1 || 0);
-    const newUpd1 = Number(req.body.upd1 || 0);
-    const newPrice = Number(req.body.uprice || 0);
-
     // Calculate running balances
     const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
     const currentTransactionBalance = newBeg1 + newIn1 + newUpd1 - newOut1;
     const finalBalance = previousBalance + currentTransactionBalance;
 
     const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
-    const currentTransactionAmount = (newBeg1 + newIn1 + newUpd1 - newOut1) * newPrice;
+    const beg1_amt = newBeg1 * newPrice;
+    const in1_amt = newIn1 * newPrice;
+    const out1_amt = newOut1 * newPrice;
+    const upd1_amt = newUpd1 * newPrice;
+    const currentTransactionAmount = beg1_amt + in1_amt + upd1_amt - out1_amt;
     const finalBalanceAmount = previousBalanceAmount + currentTransactionAmount;
 
     const updateResult = await Br_stockcardModel.update({
@@ -186,10 +203,10 @@ exports.updateBr_stockcard = async (req, res) => {
       out1: newOut1,
       upd1: newUpd1,
       uprice: newPrice,
-      beg1_amt: newBeg1 * newPrice,
-      in1_amt: newIn1 * newPrice,
-      out1_amt: newOut1 * newPrice,
-      upd1_amt: newUpd1 * newPrice,
+      beg1_amt: beg1_amt,
+      in1_amt: in1_amt,
+      out1_amt: out1_amt,
+      upd1_amt: upd1_amt,
       balance: finalBalance,
       balance_amount: finalBalanceAmount
     }, {
@@ -206,19 +223,20 @@ exports.updateBr_stockcard = async (req, res) => {
       await t.rollback();
       return res.status(404).send({
         result: false,
-        message: "Record not found"
+        message: "No record found to update"
       });
     }
 
     await t.commit();
     res.status(200).send({
       result: true,
-      message: 'Updated successfully'
+      message: 'Updated successfully',
+      updatedRows: updateResult[0]
     });
 
   } catch (error) {
     await t.rollback();
-    console.error("Error in updateBr_stockcard:", error);
+    console.error("Update Error:", error);
     res.status(500).send({
       result: false,
       message: error.message
@@ -230,7 +248,8 @@ exports.deleteBr_stockcard = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    const deleteResult = await Br_stockcardModel.destroy({
+    // Find the record to delete
+    const stockcardRecord = await Br_stockcardModel.findOne({
       where: {
         refno: req.body.refno,
         myear: req.body.myear,
@@ -240,7 +259,7 @@ exports.deleteBr_stockcard = async (req, res) => {
       transaction: t
     });
 
-    if (deleteResult === 0) {
+    if (!stockcardRecord) {
       await t.rollback();
       return res.status(404).send({
         result: false,
@@ -248,12 +267,22 @@ exports.deleteBr_stockcard = async (req, res) => {
       });
     }
 
+    // Delete the stockcard record
+    await Br_stockcardModel.destroy({
+      where: {
+        refno: req.body.refno,
+        myear: req.body.myear,
+        monthh: req.body.monthh,
+        product_code: req.body.product_code
+      },
+      transaction: t
+    });
+
     await t.commit();
     res.status(200).send({
       result: true,
       message: 'Deleted successfully'
     });
-
   } catch (error) {
     await t.rollback();
     console.error("Error in deleteBr_stockcard:", error);
@@ -372,14 +401,22 @@ exports.Br_stockcardAll = async (req, res) => {
 
 exports.countBr_stockcard = async (req, res) => {
   try {
-    const { rdate, product_code, product_name } = req.body;
+    const { rdate, rdate1, rdate2, product_code, product_name, branch_code } = req.body;
 
     let whereClause = {};
-    if (rdate) {
+
+    if (rdate1 && rdate2) {
+      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    } else if (rdate) {
       whereClause.rdate = rdate;
     }
+
     if (product_code) {
       whereClause.product_code = product_code;
+    }
+
+    if (branch_code) {
+      whereClause.branch_code = branch_code;
     }
 
     const countOptions = {

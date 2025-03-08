@@ -290,27 +290,39 @@ exports.Br_powAllrdate = async (req, res) => {
 exports.Br_powAlljoindt = async (req, res) => {
   try {
     const { offset, limit, rdate, rdate1, rdate2, supplier_code, branch_code, product_code } = req.body;
+    const { refno } = req.body; // Added to handle single refno lookup
     const { Op } = require("sequelize");
 
     let whereClause = {};
 
-    if (rdate) {
-      whereClause.rdate = rdate;
+    // If refno is provided, use that as the primary filter
+    if (refno) {
+      whereClause.refno = refno;
+    } else {
+      // Otherwise use the date range filters
+      if (rdate) whereClause.rdate = rdate;
+      if (rdate1 && rdate2) whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+      if (supplier_code) whereClause.supplier_code = supplier_code;
+      if (branch_code) whereClause.branch_code = branch_code;
     }
 
-    if (rdate1 && rdate2) {
-      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    // Only run the count query if we're doing a date range search (not a specific refno)
+    let totalCount = 0;
+    if (!refno && rdate1 && rdate2) {
+      // Create a proper query with replacements array
+      const totalResult = await sequelize.query(
+        'SELECT COUNT(refno) as count FROM br_pow WHERE trdate BETWEEN ? AND ?',
+        {
+          replacements: [rdate1, rdate2],
+          type: sequelize.QueryTypes.SELECT
+        }
+      );
+
+      totalCount = totalResult[0].count;
     }
 
-    if (supplier_code) {
-      whereClause.supplier_code = supplier_code;
-    }
-
-    if (branch_code) {
-      whereClause.branch_code = branch_code;
-    }
-
-    let br_pow_headers = await Br_powModel.findAll({
+    // Fetch the header data without joining details
+    const br_pow_headers = await Br_powModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'supplier_code', 'branch_code', 'taxable', 'nontaxable',
@@ -332,48 +344,26 @@ exports.Br_powAlljoindt = async (req, res) => {
           as: 'user',
           attributes: ['user_code', 'username'],
           required: false
-        },
-        {
-          model: Br_powdtModel,
-          required: false,
-          include: [
-            {
-              model: Tbl_product,
-              attributes: ['product_code', 'product_name'],
-              required: false,
-              where: product_code ? {
-                product_name: { [Op.like]: `%${product_code}%` }
-              } : {}
-            },
-            {
-              model: unitModel,
-              attributes: ['unit_code', 'unit_name'],
-              required: false
-            }
-          ]
         }
       ],
       where: whereClause,
       order: [['refno', 'ASC']],
-      offset,
-      limit
-    });
-
-    // Transform data to include detail information
-    br_pow_headers = br_pow_headers.map(header => {
-      const headerData = header.toJSON();
-      headerData.br_powdts = header.br_powdts || [];
-      return headerData;
+      offset: parseInt(offset) || 0,
+      limit: refno ? null : (parseInt(limit) || 10) // Don't limit if looking up by refno
     });
 
     res.status(200).send({
       result: true,
-      data: br_pow_headers
+      data: br_pow_headers,
+      total: refno ? br_pow_headers.length : totalCount
     });
 
   } catch (error) {
     console.error("Error in Br_powAlljoindt:", error);
-    res.status(500).send({ message: error.message });
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
@@ -459,8 +449,8 @@ exports.Br_powrefno = async (req, res) => {
   try {
     const { branch_code, supplier_code, date } = req.body;
 
-    if (!branch_code || !supplier_code) {
-      throw new Error('Branch code and supplier code are required');
+    if (!branch_code) {
+      throw new Error('Branch code is required');
     }
 
     // Parse the date and format it as YYMM
@@ -469,24 +459,23 @@ exports.Br_powrefno = async (req, res) => {
     const month = String(formattedDate.getMonth() + 1).padStart(2, '0');
     const dateStr = `${year}${month}`;
 
-    // Create the pattern for searching
-    const pattern = `BRPOW${branch_code}${supplier_code}${dateStr}%`;
+    // Create the pattern for searching - เอา supplier_code ออก
+    const pattern = `BRPOW${branch_code}${dateStr}%`;
 
-    // Find the latest reference number for this branch, supplier and month
+    // Find the latest reference number for this branch and month
     const refno = await Br_powModel.findOne({
       where: {
         refno: {
           [Op.like]: pattern
         },
-        branch_code: branch_code,
-        supplier_code: supplier_code
+        branch_code: branch_code
       },
       order: [['refno', 'DESC']],
     });
 
     // If no existing refno found, start with 001
     if (!refno) {
-      const newRefno = `BRPOW${branch_code}${supplier_code}${dateStr}001`;
+      const newRefno = `BRPOW${branch_code}${dateStr}001`;
       res.status(200).send({
         result: true,
         data: { refno: newRefno }
@@ -497,7 +486,7 @@ exports.Br_powrefno = async (req, res) => {
     // Extract and increment the running number
     const currentRunNo = parseInt(refno.refno.slice(-3));
     const nextRunNo = (currentRunNo + 1).toString().padStart(3, '0');
-    const newRefno = `BRPOW${branch_code}${supplier_code}${dateStr}${nextRunNo}`;
+    const newRefno = `BRPOW${branch_code}${dateStr}${nextRunNo}`;
 
     res.status(200).send({
       result: true,

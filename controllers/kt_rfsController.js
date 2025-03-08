@@ -127,18 +127,18 @@ exports.addKt_rfs = async (req, res) => {
         const newLotno = (product?.lotno || 0) + 1;
 
         // เพิ่ม record ใน kt_product_lotno
-        await Kt_product_lotno.create({
-          product_code: item.product_code,
-          lotno: newLotno,
-          unit_code: item.unit_code,
-          qty: previousBalance + newAmount,
-          lotdate: headerData.rdate,
-          tlotdate: headerData.trdate,
-          expdate: item.expire_date || null,
-          texpdate: item.texpire_date || null,
-          created_at: new Date(),
-          updated_at: new Date()
-        }, { transaction: t });
+        // await Kt_product_lotno.create({
+        //   product_code: item.product_code,
+        //   lotno: newLotno,
+        //   unit_code: item.unit_code,
+        //   qty: previousBalance + newAmount,
+        //   lotdate: headerData.rdate,
+        //   tlotdate: headerData.trdate,
+        //   expdate: item.expire_date || null,
+        //   texpdate: item.texpire_date || null,
+        //   created_at: new Date(),
+        //   updated_at: new Date()
+        // }, { transaction: t });
 
         await Tbl_product.update(
           { lotno: newLotno },
@@ -496,9 +496,25 @@ exports.searchKt_rfsrefno = async (req, res) => {
 
 exports.Kt_rfsrefno = async (req, res) => {
   try {
+    const { month, year } = req.body;
+
+    // Build query based on provided parameters
+    let whereClause = {};
+
+    if (month && year) {
+      // If month and year are provided, find the latest refno for that specific month/year
+      whereClause = {
+        refno: {
+          [Op.like]: `KTFS${year}${month}%`
+        }
+      };
+    }
+
     const refno = await Kt_rfs.findOne({
+      where: whereClause,
       order: [['refno', 'DESC']],
     });
+
     res.status(200).send({ result: true, data: refno });
   } catch (error) {
     console.error(error);
