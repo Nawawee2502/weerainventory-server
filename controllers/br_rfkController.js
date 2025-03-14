@@ -504,3 +504,27 @@ exports.searchBr_rfkRunno = async (req, res) => {
     res.status(500).send({ message: error });
   }
 };
+
+exports.getUsedRefnos = async (req, res) => {
+  try {
+    // Get all records from br_rfk table - using br_rfkModel instead of br_rfk
+    const usedReceipts = await br_rfkModel.findAll({
+      attributes: ['refno'],
+      raw: true
+    });
+
+    // Extract just the refno values into an array
+    const usedRefnos = usedReceipts.map(record => record.refno);
+
+    return res.status(200).json({
+      result: true,
+      data: usedRefnos
+    });
+  } catch (error) {
+    console.error("Error fetching used refnos:", error);
+    return res.status(500).json({
+      result: false,
+      message: error.message || "Server error"
+    });
+  }
+};

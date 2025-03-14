@@ -1217,6 +1217,8 @@ db.Br_rfs = require("./br_rfsModel")(sequelize, Sequelize)
 db.Br_rfsdt = require("./br_rfsdtModel")(sequelize, Sequelize)
 db.Br_grf = require("./br_grfModel")(sequelize, Sequelize)
 db.Br_grfdt = require("./br_grfdtModel")(sequelize, Sequelize)
+db.Br_rtk = require("./br_rtkModel")(sequelize, Sequelize)
+db.Br_rtkdt = require("./br_rtkdtModel")(sequelize, Sequelize)
 
 
 //stock card
@@ -1599,6 +1601,69 @@ db.Tbl_product.hasMany(db.Br_rfsdt, {
   sourceKey: 'product_code', // sourceKey ของ Product
 });
 
+// br_rtk relationships
+db.Br_rtk.hasMany(db.Br_rtkdt, {
+  foreignKey: 'refno',  // foreignKey of br_rtkdt
+  sourceKey: 'refno' // sourceKey of br_rtk
+});
+
+db.Br_rtkdt.belongsTo(db.Br_rtk, {
+  foreignKey: 'refno',  // foreignKey of br_rtkdt
+  targetKey: 'refno' // targetKey of br_rtk
+});
+
+db.Br_rtk.belongsTo(db.Tbl_branch, {
+  foreignKey: 'branch_code',
+  targetKey: 'branch_code',
+});
+
+db.Tbl_branch.hasMany(db.Br_rtk, {
+  foreignKey: 'branch_code',
+  sourceKey: 'branch_code',
+});
+
+db.Br_rtk.belongsTo(db.Tbl_kitchen, {
+  foreignKey: 'kitchen_code',
+  targetKey: 'kitchen_code',
+});
+
+db.Tbl_kitchen.hasMany(db.Br_rtk, {
+  foreignKey: 'kitchen_code',
+  sourceKey: 'kitchen_code',
+});
+
+db.Br_rtk.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Br_rtk, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'br_rtk'
+});
+
+db.Br_rtkdt.belongsTo(db.Tbl_unit, {
+  foreignKey: 'unit_code',
+  targetKey: 'unit_code',
+});
+
+db.Tbl_unit.hasMany(db.Br_rtkdt, {
+  foreignKey: 'unit_code',
+  sourceKey: 'unit_code',
+});
+
+db.Br_rtkdt.belongsTo(db.Tbl_product, {
+  foreignKey: 'product_code',
+  targetKey: 'product_code',
+});
+
+db.Tbl_product.hasMany(db.Br_rtkdt, {
+  foreignKey: 'product_code',
+  sourceKey: 'product_code',
+});
+
 
 
 // ใบเบิกสินค้า
@@ -1655,6 +1720,18 @@ db.User.hasMany(db.Br_grf, {
   foreignKey: 'user_code',
   sourceKey: 'user_code',
   as: 'br_grf'
+});
+
+db.Br_saf.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Br_saf, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'br_saf'
 });
 
 

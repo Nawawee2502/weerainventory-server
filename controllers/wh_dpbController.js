@@ -10,20 +10,12 @@ const {
   Wh_product_lotno
 } = require("../models/mainModel");
 
-// สำหรับ addWh_dpb
 exports.addWh_dpb = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
     const { headerData, productArrayData, footerData } = req.body;
 
-    console.log('Received Data:', {
-      headerData,
-      productArrayData,
-      footerData
-    });
-
-    // ตรวจสอบข้อมูลที่จำเป็น
     if (!headerData.refno || !headerData.branch_code) {
       throw new Error('Missing required fields in header data');
     }
@@ -33,7 +25,6 @@ exports.addWh_dpb = async (req, res) => {
     }
 
     try {
-      // 1. สร้าง WH_DPB record
       await wh_dpbModel.create({
         refno: headerData.refno,
         rdate: headerData.rdate,
@@ -47,12 +38,9 @@ exports.addWh_dpb = async (req, res) => {
         total: footerData.total
       }, { transaction: t });
 
-      // 2. สร้าง detail records
       await wh_dpbdtModel.bulkCreate(productArrayData, { transaction: t });
 
-      // 3. สร้าง stockcard records และอัพเดท lotno
       for (const item of productArrayData) {
-        // หา records ทั้งหมดของสินค้านี้เพื่อคำนวณยอดรวม
         const stockcardRecords = await Wh_stockcard.findAll({
           where: { product_code: item.product_code },
           order: [['rdate', 'DESC'], ['refno', 'DESC']],
@@ -60,33 +48,27 @@ exports.addWh_dpb = async (req, res) => {
           transaction: t
         });
 
-        // คำนวณยอดรวมจาก records ที่มีอยู่
-        const totals = stockcardRecords.reduce((acc, record) => {
-          return {
-            beg1: acc.beg1 + Number(record.beg1 || 0),
-            in1: acc.in1 + Number(record.in1 || 0),
-            out1: acc.out1 + Number(record.out1 || 0),
-            upd1: acc.upd1 + Number(record.upd1 || 0),
-            beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
-            in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
-            out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
-            upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
-          };
-        }, {
+        const totals = stockcardRecords.reduce((acc, record) => ({
+          beg1: acc.beg1 + Number(record.beg1 || 0),
+          in1: acc.in1 + Number(record.in1 || 0),
+          out1: acc.out1 + Number(record.out1 || 0),
+          upd1: acc.upd1 + Number(record.upd1 || 0),
+          beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
+          in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
+          out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
+          upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
+        }), {
           beg1: 0, in1: 0, out1: 0, upd1: 0,
           beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
         });
 
-        // คำนวณค่าใหม่สำหรับการเบิกจ่าย
         const outAmount = Number(item.qty || 0);
         const outPrice = Number(item.uprice || 0);
         const outAmountValue = outAmount * outPrice;
 
-        // คำนวณ balance และ balance_amount
         const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
         const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
 
-        // สร้าง stockcard record ใหม่
         await Wh_stockcard.create({
           myear: headerData.myear,
           monthh: headerData.monthh,
@@ -109,7 +91,7 @@ exports.addWh_dpb = async (req, res) => {
           balance_amount: previousBalanceAmount - outAmountValue
         }, { transaction: t });
 
-        // หา lotno ล่าสุดจาก wh_product_lotno
+        // Update lotno if needed
         const lastLotno = await Wh_product_lotno.findOne({
           where: { product_code: item.product_code },
           order: [['lotno', 'DESC']],
@@ -119,7 +101,6 @@ exports.addWh_dpb = async (req, res) => {
 
         const newLotno = (lastLotno?.lotno || 0) + 1;
 
-        // อัพเดท lotno ในตาราง product
         await Tbl_product.update(
           { lotno: newLotno },
           {
@@ -128,7 +109,6 @@ exports.addWh_dpb = async (req, res) => {
           }
         );
 
-        // สร้าง product lotno record ใหม่
         await Wh_product_lotno.create({
           product_code: item.product_code,
           lotno: newLotno,
@@ -164,34 +144,84 @@ exports.addWh_dpb = async (req, res) => {
 };
 
 exports.updateWh_dpb = async (req, res) => {
+  const t = await sequelize.transaction();
+
   try {
+    const { headerData, productArrayData, footerData } = req.body;
+
+    if (!headerData || !headerData.refno) {
+      throw new Error('Missing refno in header data');
+    }
+
+    // Update header
     await wh_dpbModel.update(
       {
-        rdate: req.body.rdate,
-        trdate: req.body.trdate,
-        myear: req.body.myear,
-        monthh: req.body.monthh,
-        branch_code: req.body.branch_code,
-        taxable: req.body.taxable,
-        nontaxable: req.body.nontaxable,
-        total: req.body.total,
-        user_code: req.body.user_code,
+        rdate: headerData.rdate,
+        trdate: headerData.trdate,
+        myear: headerData.myear,
+        monthh: headerData.monthh,
+        branch_code: headerData.branch_code,
+        taxable: headerData.taxable || 0,
+        nontaxable: headerData.nontaxable || 0,
+        total: footerData.total || 0,
+        user_code: headerData.user_code
       },
-      { where: { refno: req.body.refno } }
+      {
+        where: { refno: headerData.refno },
+        transaction: t
+      }
     );
 
-    res.status(200).send({ result: true });
+    // Delete old detail records
+    await wh_dpbdtModel.destroy({
+      where: { refno: headerData.refno },
+      transaction: t
+    });
+
+    // Add new detail records
+    if (Array.isArray(productArrayData) && productArrayData.length > 0) {
+      await wh_dpbdtModel.bulkCreate(productArrayData, { transaction: t });
+    }
+
+    // Update stockcard if needed
+    await Wh_stockcard.update(
+      {
+        rdate: headerData.rdate,
+        trdate: headerData.trdate,
+        myear: headerData.myear,
+        monthh: headerData.monthh
+      },
+      {
+        where: { refno: headerData.refno },
+        transaction: t
+      }
+    );
+
+    await t.commit();
+    res.status(200).json({
+      result: true,
+      message: 'Updated successfully'
+    });
+
   } catch (error) {
-    res.status(500).send({ message: error });
+    await t.rollback();
+    console.error('Update Error:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'Failed to update dispatch'
+    });
   }
 };
 
 exports.deleteWh_dpb = async (req, res) => {
   try {
-    await wh_dpbModel.destroy({ where: { refno: req.body.refno } });
-    res.status(200).send({ result: true });
+    wh_dpbModel.destroy(
+      { where: { refno: req.body.refno } }
+    );
+    res.status(200).send({ result: true })
   } catch (error) {
-    res.status(500).send({ message: error });
+    console.log(error)
+    res.status(500).send({ message: error })
   }
 };
 
@@ -201,7 +231,8 @@ exports.Wh_dpbAllrdate = async (req, res) => {
     const { Op } = require("sequelize");
 
     const wherebranch = { branch_name: { [Op.like]: '%', } };
-    if (branch_name) wherebranch = { $like: '%' + branch_name + '%' };
+    if (branch_name)
+      wherebranch = { $like: '%' + branch_name + '%' };
 
     const wh_dpbShow = await wh_dpbModel.findAll({
       include: [
@@ -285,7 +316,7 @@ exports.Wh_dpbAlljoindt = async (req, res) => {
             required: true
           },
           {
-            model: unitModel,  // เปลี่ยนจาก as: 'productUnit1' เป็นการใช้ model โดยตรง
+            model: unitModel,
             attributes: ['unit_code', 'unit_name'],
             required: false
           }
@@ -319,7 +350,23 @@ exports.Wh_dpbAlljoindt = async (req, res) => {
 
 exports.Wh_dpbByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    // Adjust refno access method
+    let refnoValue = req.body.refno;
+
+    // Check if refno is an object
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+      console.log('Extracted refno from object:', refnoValue);
+    }
+
+    console.log('Processing refno:', refnoValue, 'Type:', typeof refnoValue);
+
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'Refno is required (not found or empty)'
+      });
+    }
 
     const wh_dpbShow = await wh_dpbModel.findOne({
       include: [
@@ -328,18 +375,43 @@ exports.Wh_dpbByRefno = async (req, res) => {
           include: [{
             model: Tbl_product,
             include: [
-              { model: Tbl_unit, as: 'productUnit1', required: true },
-              { model: Tbl_unit, as: 'productUnit2', required: true },
-            ],
-          }],
+              {
+                model: unitModel,
+                as: 'productUnit1',
+                required: false
+              },
+              {
+                model: unitModel,
+                as: 'productUnit2',
+                required: false
+              }
+            ]
+          }]
         },
+        {
+          model: Tbl_branch,
+          required: false
+        }
       ],
-      where: { refno },
+      where: { refno: refnoValue }
     });
 
-    res.status(200).send({ result: true, data: wh_dpbShow });
+    if (!wh_dpbShow) {
+      console.log('No data found for refno:', refnoValue);
+      return res.status(404).json({
+        result: false,
+        message: 'Dispatch not found'
+      });
+    }
+
+    res.status(200).json({ result: true, data: wh_dpbShow });
   } catch (error) {
-    res.status(500).send({ message: error });
+    console.error('Error in Wh_dpbByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'Failed to fetch dispatch details',
+      stack: error.stack
+    });
   }
 };
 
@@ -364,7 +436,7 @@ exports.searchWh_dpbrefno = async (req, res) => {
     const { Op } = require("sequelize");
     const { refno } = req.body;
 
-    const Wh_dpbShow = await wh_dpbModel.findAll({
+    const wh_dpbShow = await wh_dpbModel.findAll({
       where: {
         refno: {
           [Op.like]: `%${refno}%`
@@ -372,34 +444,50 @@ exports.searchWh_dpbrefno = async (req, res) => {
       }
     });
 
-    res.status(200).send({ result: true, data: Wh_dpbShow });
+    res.status(200).send({ result: true, data: wh_dpbShow });
   } catch (error) {
     res.status(500).send({ message: error });
   }
 };
 
+// Fix for controller exports.Wh_dpbrefno
 exports.Wh_dpbrefno = async (req, res) => {
   try {
+    const { month, year } = req.body;
+    
+    if (!month || !year) {
+      return res.status(400).send({ 
+        result: false, 
+        message: "Month and year parameters are required" 
+      });
+    }
+    
     const refno = await wh_dpbModel.findOne({
+      where: {
+        monthh: month,
+        myear: `20${year}`
+      },
       order: [['refno', 'DESC']],
     });
+    
     res.status(200).send({ result: true, data: refno });
   } catch (error) {
-    res.status(500).send({ message: error });
+    console.error(error);
+    res.status(500).send({ message: error.message });
   }
-}
+};
 
 exports.searchWh_dpbRunno = async (req, res) => {
   try {
-    const Wh_dpbShow = await wh_dpbModel.findAll({
+    const wh_dpbShow = await wh_dpbModel.findAll({
       where: {
         myear: req.body.myear,
         monthh: req.body.monthh
       },
       order: [['refno', 'DESC']],
     });
-    res.status(200).send({ result: true, data: Wh_dpbShow });
+    res.status(200).send({ result: true, data: wh_dpbShow });
   } catch (error) {
     res.status(500).send({ message: error });
   }
-}
+};

@@ -456,7 +456,8 @@ const {
   Br_rfwAllrdate,
   Br_rfwrefno,
   searchBr_rfwRunno,
-  Br_rfwByRefno
+  Br_rfwByRefno,
+  getUsedRefnosrfw
 } = require("../controllers/br_rfwController")
 
 const {
@@ -476,7 +477,8 @@ const {
   Br_rfkAllrdate,
   Br_rfkrefno,
   searchBr_rfkRunno,
-  Br_rfkByRefno
+  Br_rfkByRefno,
+  getUsedRefnos
 } = require("../controllers/br_rfkController")
 
 const {
@@ -507,6 +509,27 @@ const {
   Br_rfsdtAlljoindt,
   Br_rfsAllinnerjoin,
 } = require("../controllers/br_rfsdtController")
+
+const {
+  addBr_rtk,
+  updateBr_rtk,
+  deleteBr_rtk,
+  Br_rtkAlljoindt,
+  Br_rtkAllrdate,
+  Br_rtkrefno,
+  searchBr_rtkRunno,
+  Br_rtkByRefno,
+  countBr_rtk
+} = require("../controllers/br_rtkController")
+
+const {
+  addBr_rtkdt,
+  updateBr_rtkdt,
+  deleteBr_rtkdt,
+  countBr_rtkdt,
+  Br_rtkdtAlljoindt,
+  Br_rtkdtAllinnerjoin,
+} = require("../controllers/br_rtkdtController")
 
 const {
   addBr_grf,
@@ -861,6 +884,7 @@ router.post("/deleteKt_dpbdt", deleteKt_dpbdt);
 router.post("/countKt_dpbdt", countKt_dpbdt);
 router.post("/Kt_dpbdtAlljoindt", Kt_dpbdtAlljoindt)
 
+
 //ใบปรับปรุงสินค้า
 router.post("/addKt_saf", addKt_saf);
 router.post("/updateKt_saf", updateKt_saf);
@@ -905,7 +929,7 @@ router.post("/addBr_safdt", addBr_safdt);
 router.post("/updateBr_safdt", updateBr_safdt);
 router.post("/deleteBr_safdt", deleteBr_safdt);
 router.post("/countBr_safdt", countBr_safdt);
-router.post("/Br_saftAlljoindt", Br_safdtAlljoindt)
+router.post("/Br_safdtAlljoindt", Br_safdtAlljoindt)
 
 // สาขา ใบสั่งสินค้าให้คลังสินค้า
 router.post("/addBr_pow", addBr_pow);
@@ -937,7 +961,8 @@ router.post("/addBr_rfwdt", addBr_rfwdt);
 router.post("/updateBr_rfwdt", updateBr_rfwdt);
 router.post("/deleteBr_rfwdt", deleteBr_rfwdt);
 router.post("/countBr_rfwdt", countBr_rfwdt);
-router.post("/Br_rfwdtAlljoindt", Br_rfwdtAlljoindt)
+router.post("/Br_rfwdtAlljoindt", Br_rfwdtAlljoindt);
+router.post("/rfw-used-refnos", getUsedRefnosrfw);
 
 // สาขา ใบรับสินค้าจากครัวกลาง
 router.post("/addBr_rfk", addBr_rfk);
@@ -954,6 +979,7 @@ router.post("/updateBr_rfkdt", updateBr_rfkdt);
 router.post("/deleteBr_rfkdt", deleteBr_rfkdt);
 router.post("/countBr_rfkdt", countBr_rfkdt);
 router.post("/Br_rfkdtAlljoindt", Br_rfkdtAlljoindt)
+router.post("/used-refnos", getUsedRefnos);
 
 // สาขา ใบรับสินค้าจาก Supplier
 router.post("/addBr_rfs", addBr_rfs);
@@ -970,6 +996,23 @@ router.post("/updateBr_rfsdt", updateBr_rfsdt);
 router.post("/deleteBr_rfsdt", deleteBr_rfsdt);
 router.post("/countBr_rfsdt", countBr_rfsdt);
 router.post("/Br_rfsdtAlljoindt", Br_rfsdtAlljoindt)
+
+router.post("/addBr_rtk", addBr_rtk);
+router.post("/updateBr_rtk", updateBr_rtk);
+router.post("/deleteBr_rtk", deleteBr_rtk);
+router.post("/Br_rtkAlljoindt", Br_rtkAlljoindt);
+router.post("/Br_rtkAllrdate", Br_rtkAllrdate);
+router.post("/Br_rtkrefno", Br_rtkrefno);
+router.post("/Br_rtkbyrefno", Br_rtkByRefno);
+router.post("/searchBr_rtkRunno", searchBr_rtkRunno);
+router.post("/countBr_rtk", countBr_rtk);
+
+router.post("/addBr_rtkdt", addBr_rtkdt);
+router.post("/updateBr_rtkdt", updateBr_rtkdt);
+router.post("/deleteBr_rtkdt", deleteBr_rtkdt);
+router.post("/countBr_rtkdt", countBr_rtkdt);
+router.post("/Br_rtkdtAlljoindt", Br_rtkdtAlljoindt);
+
 
 // สาขา ใบเบิกสินค้า
 router.post("/addBr_grf", addBr_grf);

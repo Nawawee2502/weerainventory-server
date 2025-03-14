@@ -9,20 +9,22 @@ const {
   sequelize,
   Tbl_product,
   Tbl_branch,
-  User
+  User,
+  Wh_stockcard,
+  Wh_product_lotno
 } = require("../models/mainModel");
 
 exports.addWh_pos = async (req, res) => {
+  const t = await sequelize.transaction();
+
   try {
-    // console.log("req",req)
     const headerData = req.body.headerData;
-    // console.log("req.body", req.body)
-    console.log("headerData", headerData)
+    console.log("headerData", headerData);
     const productArrayData = req.body.productArrayData;
     const footerData = req.body.footerData;
-    // console.log("footerData", footerData)
 
-    wh_posModel.create({
+    // Create main POS record
+    await wh_posModel.create({
       refno: headerData.refno,
       rdate: headerData.rdate,
       supplier_code: headerData.supplier_code,
@@ -34,84 +36,261 @@ exports.addWh_pos = async (req, res) => {
       taxable: headerData.taxable,
       nontaxable: headerData.nontaxable,
       total: footerData.total
-    })
-      .then(() => {
-        console.log("THEN")
-        console.log(productArrayData)
-        wh_posdtModel.bulkCreate(productArrayData)
-      })
-    res.status(200).send({ result: true })
-  } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
-  }
+    }, { transaction: t });
 
+    // Create POS detail records
+    await wh_posdtModel.bulkCreate(productArrayData, { transaction: t });
+
+    // Process each product for stockcard and product lotno
+    for (const item of productArrayData) {
+      // Get all previous records for this product to calculate running totals
+      const stockcardRecords = await Wh_stockcard.findAll({
+        where: { product_code: item.product_code },
+        order: [
+          ['rdate', 'DESC'],
+          ['refno', 'DESC']
+        ],
+        raw: true,
+        transaction: t
+      });
+
+      // Calculate previous totals
+      const totals = stockcardRecords.reduce((acc, record) => {
+        return {
+          beg1: acc.beg1 + Number(record.beg1 || 0),
+          in1: acc.in1 + Number(record.in1 || 0),
+          out1: acc.out1 + Number(record.out1 || 0),
+          upd1: acc.upd1 + Number(record.upd1 || 0),
+          beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
+          in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
+          out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
+          upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
+        };
+      }, {
+        beg1: 0, in1: 0, out1: 0, upd1: 0,
+        beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
+      });
+
+      // Calculate new values
+      const newAmount = Number(item.qty || 0);
+      const newPrice = Number(item.uprice || 0);
+      const newAmountValue = newAmount * newPrice;
+
+      // Calculate running balances
+      const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
+      const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
+
+      // Create stockcard record with calculated values
+      await Wh_stockcard.create({
+        myear: headerData.myear,
+        monthh: headerData.monthh,
+        product_code: item.product_code,
+        unit_code: item.unit_code,
+        refno: headerData.refno,
+        rdate: headerData.rdate,
+        trdate: headerData.trdate,
+        lotno: 0,
+        beg1: 0,
+        in1: newAmount,
+        out1: 0,
+        upd1: 0,
+        uprice: newPrice,
+        beg1_amt: 0,
+        in1_amt: newAmountValue,
+        out1_amt: 0,
+        upd1_amt: 0,
+        balance: previousBalance + newAmount,
+        balance_amount: previousBalanceAmount + newAmountValue
+      }, { transaction: t });
+
+      // Handle product lotno if necessary
+      const product = await Tbl_product.findOne({
+        where: { product_code: item.product_code },
+        attributes: ['lotno'],
+        transaction: t
+      });
+
+      const newLotno = (product?.lotno || 0) + 1;
+
+      // Create product lotno record
+      await Wh_product_lotno.create({
+        product_code: item.product_code,
+        lotno: newLotno,
+        unit_code: item.unit_code,
+        qty: previousBalance + newAmount,
+        uprice: newPrice,
+        refno: headerData.refno,
+        qty_use: 0.00,
+        rdate: headerData.rdate
+      }, { transaction: t });
+
+      // Update product lotno
+      await Tbl_product.update(
+        { lotno: newLotno },
+        {
+          where: { product_code: item.product_code },
+          transaction: t
+        }
+      );
+    }
+
+    await t.commit();
+    res.status(200).send({
+      result: true,
+      message: 'Created successfully with stockcard and lotno records'
+    });
+  } catch (error) {
+    await t.rollback();
+    console.log("Error in addWh_pos:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message,
+      errorDetail: error.stack
+    });
+  }
 };
 
 exports.updateWh_pos = async (req, res) => {
+  const t = await sequelize.transaction();
+
   try {
-    wh_posModel.update(
+    const updateData = req.body;
+
+    // Update the main record
+    const updateResult = await wh_posModel.update(
       {
-        rdate: req.body.rdate,
-        trdate: req.body.trdate,
-        myear: req.body.myear,
-        monthh: req.body.monthh,
-        supplier_code: req.body.supplier_code,
-        branch_code: req.body.branch_code,
-        taxable: req.body.taxable,
-        nontaxable: req.body.nontaxable,
-        total: req.body.total,
-        user_code: req.body.user_code
+        rdate: updateData.rdate,
+        trdate: updateData.trdate,
+        myear: updateData.myear,
+        monthh: updateData.monthh,
+        supplier_code: updateData.supplier_code,
+        branch_code: updateData.branch_code,
+        taxable: updateData.taxable,
+        nontaxable: updateData.nontaxable,
+        total: updateData.total,
+        user_code: updateData.user_code
       },
-      { where: { refno: req.body.refno } }
+      {
+        where: { refno: updateData.refno },
+        transaction: t
+      }
     );
-    res.status(200).send({ result: true });
+
+    // Update related stockcard records
+    await Wh_stockcard.update(
+      {
+        rdate: updateData.rdate,
+        trdate: updateData.trdate,
+        myear: updateData.myear,
+        monthh: updateData.monthh
+      },
+      {
+        where: { refno: updateData.refno },
+        transaction: t
+      }
+    );
+
+    // Update product lotno records
+    await Wh_product_lotno.update(
+      {
+        rdate: updateData.rdate
+      },
+      {
+        where: { refno: updateData.refno },
+        transaction: t
+      }
+    );
+
+    await t.commit();
+    res.status(200).send({
+      result: true,
+      message: 'Updated successfully',
+      updatedRows: updateResult[0]
+    });
   } catch (error) {
-    console.log(error);
-    res.status(500).send({ message: error });
+    await t.rollback();
+    console.log("Update Error:", error);
+    res.status(500).send({ message: error.message });
   }
 };
 
-
 exports.deleteWh_pos = async (req, res) => {
-  try {
-    wh_posModel.destroy(
-      { where: { refno: req.body.refno } }
-    );
-    res.status(200).send({ result: true })
-  } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
-  }
+  const t = await sequelize.transaction();
 
+  try {
+    const { refno } = req.body;
+
+    // Delete detail records first
+    await wh_posdtModel.destroy(
+      {
+        where: { refno },
+        transaction: t
+      }
+    );
+
+    // Delete stockcard records
+    await Wh_stockcard.destroy(
+      {
+        where: { refno },
+        transaction: t
+      }
+    );
+
+    // Delete product lotno records
+    await Wh_product_lotno.destroy(
+      {
+        where: { refno },
+        transaction: t
+      }
+    );
+
+    // Finally delete the main record
+    const deleteResult = await wh_posModel.destroy(
+      {
+        where: { refno },
+        transaction: t
+      }
+    );
+
+    await t.commit();
+    res.status(200).send({
+      result: true,
+      message: 'Deleted successfully',
+      deletedRows: deleteResult
+    });
+  } catch (error) {
+    await t.rollback();
+    console.error("Delete Error:", error);
+    res.status(500).send({ message: error.message });
+  }
 };
 
 exports.Wh_posAllrdate = async (req, res) => {
   try {
     const { offset, limit, rdate1, rdate2, supplier_name, branch_name } = req.body;
-    const { Op, where } = require("sequelize");
+    const { Op } = require("sequelize");
 
-    const wheresupplier = { supplier_name: { [Op.like]: '%', } };
-    if (supplier_name)
-      wheresupplier = { $like: '%' + supplier_name + '%' };
+    let wheresupplier = { supplier_name: { [Op.like]: '%' } };
+    if (supplier_name) {
+      wheresupplier = { supplier_name: { [Op.like]: `%${supplier_name}%` } };
+    }
 
-    const wherebranch = { branch_name: { [Op.like]: '%', } };
-    if (branch_name)
-      wherebranch = { $like: '%' + branch_name + '%' };
+    let wherebranch = { branch_name: { [Op.like]: '%' } };
+    if (branch_name) {
+      wherebranch = { branch_name: { [Op.like]: `%${branch_name}%` } };
+    }
 
     const wh_posShow = await wh_posModel.findAll({
       include: [
         {
           model: Tbl_supplier,
           attributes: ['supplier_code', 'supplier_name'],
-          // where: { supplier_name: {[Op.like]: '%'+(supplier_name)+'%',}},
           where: wheresupplier,
           required: true,
         },
         {
           model: Tbl_branch,
           attributes: ['branch_code', 'branch_name'],
-          // where: { branch_name: {[Op.like]: '%'+(branch_name)+'%',}},
           where: wherebranch,
           required: true,
         },
@@ -223,19 +402,51 @@ exports.Wh_posAlljoindt = async (req, res) => {
         ]
       });
 
+      // Get stockcard information for balance and balance_amount
+      const stockcardInfo = await Wh_stockcard.findAll({
+        where: { refno: refnos },
+        attributes: ['refno', 'product_code', 'balance', 'balance_amount']
+      });
+
       // จัดกลุ่มข้อมูลรายละเอียดตาม refno
       const detailsByRefno = {};
       details.forEach(detail => {
         if (!detailsByRefno[detail.refno]) {
           detailsByRefno[detail.refno] = [];
         }
-        detailsByRefno[detail.refno].push(detail);
+        detailsByRefno[detail.refno].push(detail.toJSON());
+      });
+
+      // Create lookup for stockcard data
+      const stockcardByRefnoAndProduct = {};
+      stockcardInfo.forEach(sc => {
+        if (!stockcardByRefnoAndProduct[sc.refno]) {
+          stockcardByRefnoAndProduct[sc.refno] = {};
+        }
+        stockcardByRefnoAndProduct[sc.refno][sc.product_code] = {
+          balance: sc.balance,
+          balance_amount: sc.balance_amount
+        };
       });
 
       // รวมข้อมูลเข้าด้วยกัน
       wh_pos_headers = wh_pos_headers.map(header => {
         const headerData = header.toJSON();
-        headerData.wh_posdts = detailsByRefno[header.refno] || [];
+        const details = detailsByRefno[header.refno] || [];
+
+        // Add stockcard data to details
+        headerData.wh_posdts = details.map(detail => {
+          const stockcardData = stockcardByRefnoAndProduct[header.refno]?.[detail.product_code] || {
+            balance: 0,
+            balance_amount: 0
+          };
+          return {
+            ...detail,
+            balance: stockcardData.balance,
+            balance_amount: stockcardData.balance_amount
+          };
+        });
+
         return headerData;
       });
     }

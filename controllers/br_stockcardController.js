@@ -9,18 +9,17 @@ exports.addBr_stockcard = async (req, res) => {
   try {
     console.log("Incoming request body:", req.body);
 
-    // Validate required fields
-    if (!req.body.product_code || !req.body.rdate || !req.body.trdate) {
-      throw new Error('Missing required fields: product_code, rdate, or trdate');
+    if (!req.body.product_code || !req.body.rdate || !req.body.trdate || !req.body.branch_code) {
+      throw new Error('Missing required fields: product_code, rdate, trdate, or branch_code');
     }
 
     try {
-      // Check for existing record
       const existingRecord = await Br_stockcardModel.findOne({
         where: {
           product_code: req.body.product_code,
+          refno: req.body.refno,
           rdate: req.body.rdate,
-          trdate: req.body.trdate
+          branch_code: req.body.branch_code
         },
         transaction: t
       });
@@ -29,17 +28,16 @@ exports.addBr_stockcard = async (req, res) => {
         await t.rollback();
         return res.status(400).send({
           result: false,
-          message: `This product has already been added on ${req.body.rdate}`,
+          message: `This product has already been added for ${req.body.rdate} with reference ${req.body.refno} in this branch`,
           type: 'DUPLICATE_RECORD'
         });
       }
 
-      // Get all previous records for this product to calculate running totals
       const stockcardRecords = await Br_stockcardModel.findAll({
         where: { product_code: req.body.product_code },
         order: [
-          ['rdate', 'DESC'],
-          ['refno', 'DESC']
+          ['trdate', 'ASC'],
+          ['refno', 'ASC']
         ],
         raw: true,
         transaction: t
@@ -62,20 +60,17 @@ exports.addBr_stockcard = async (req, res) => {
         beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
       });
 
-      // Calculate new values
       const newBeg1 = Number(req.body.beg1 || 0);
       const newIn1 = Number(req.body.in1 || 0);
       const newOut1 = Number(req.body.out1 || 0);
       const newUpd1 = Number(req.body.upd1 || 0);
       const newPrice = Number(req.body.uprice || 0);
 
-      // Calculate monetary values
       const beg1_amt = newBeg1 * newPrice;
       const in1_amt = newIn1 * newPrice;
       const out1_amt = newOut1 * newPrice;
       const upd1_amt = newUpd1 * newPrice;
 
-      // Calculate running balances
       const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
       const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
 
@@ -85,7 +80,6 @@ exports.addBr_stockcard = async (req, res) => {
       const finalBalance = previousBalance + currentTransactionBalance;
       const finalBalanceAmount = previousBalanceAmount + currentTransactionAmount;
 
-      // Create stockcard record with calculated values
       const stockcardRecord = await Br_stockcardModel.create({
         myear: req.body.myear,
         monthh: req.body.monthh,
@@ -151,12 +145,14 @@ exports.updateBr_stockcard = async (req, res) => {
       where: {
         product_code: req.body.product_code,
         [Op.not]: {
-          refno: req.body.refno
+          refno: req.body.refno,
+          myear: req.body.myear,
+          monthh: req.body.monthh
         }
       },
       order: [
-        ['rdate', 'DESC'],
-        ['refno', 'DESC']
+        ['trdate', 'ASC'],
+        ['refno', 'ASC']
       ],
       raw: true,
       transaction: t
@@ -295,22 +291,31 @@ exports.deleteBr_stockcard = async (req, res) => {
 
 exports.Br_stockcardAll = async (req, res) => {
   try {
-    const { offset, limit, rdate, rdate1, rdate2, product_code, product_name, branch_code, branch_name } = req.body;
+    const { offset, limit, rdate, rdate1, rdate2, product_code, product_name, branch_code, branch_name, refno } = req.body;
+
+    console.log("Received request parameters:", req.body);
 
     let whereClause = {};
 
+    // Handle date filtering
     if (rdate1 && rdate2) {
       whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
     } else if (rdate) {
       whereClause.rdate = rdate;
     }
 
+    // Apply filters
     if (product_code) {
       whereClause.product_code = product_code;
     }
 
     if (branch_code) {
       whereClause.branch_code = branch_code;
+    }
+
+    // Add refno filter if provided
+    if (refno) {
+      whereClause.refno = refno;
     }
 
     let productWhereClause = {};
@@ -326,6 +331,8 @@ exports.Br_stockcardAll = async (req, res) => {
         [Op.like]: `%${branch_name}%`
       };
     }
+
+    console.log("SQL where clause:", JSON.stringify(whereClause));
 
     const stockcardShow = await Br_stockcardModel.findAll({
       attributes: [
@@ -380,9 +387,12 @@ exports.Br_stockcardAll = async (req, res) => {
       limit: limit || 10
     });
 
+    console.log(`Found ${stockcardShow.length} records`);
+
+    // Important: Add display IDs without expecting them to be in database
     const transformedData = stockcardShow.map((item, index) => ({
       ...item.get({ plain: true }),
-      id: (offset || 0) + index + 1
+      display_id: (offset || 0) + index + 1  // Change from 'id' to 'display_id'
     }));
 
     res.status(200).send({
@@ -399,9 +409,12 @@ exports.Br_stockcardAll = async (req, res) => {
   }
 };
 
+
 exports.countBr_stockcard = async (req, res) => {
   try {
-    const { rdate, rdate1, rdate2, product_code, product_name, branch_code } = req.body;
+    const { rdate, rdate1, rdate2, product_code, product_name, branch_code, refno } = req.body;
+
+    console.log("Count request parameters:", req.body);
 
     let whereClause = {};
 
@@ -419,10 +432,15 @@ exports.countBr_stockcard = async (req, res) => {
       whereClause.branch_code = branch_code;
     }
 
+    if (refno) {
+      whereClause.refno = refno;
+    }
+
+    console.log("Count where clause:", whereClause);
+
     const countOptions = {
       where: whereClause,
-      distinct: true,
-      col: 'refno'
+      col: 'product_code'
     };
 
     if (product_name) {
@@ -437,7 +455,10 @@ exports.countBr_stockcard = async (req, res) => {
       }];
     }
 
+    // ใช้ count แบบปกติแทนที่จะนับ ID field
     const count = await Br_stockcardModel.count(countOptions);
+
+    console.log("Count result:", count);
 
     res.status(200).send({
       result: true,

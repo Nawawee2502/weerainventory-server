@@ -1,7 +1,9 @@
 const {
   Wh_stockcard: Wh_stockcardModel,
   Tbl_product,
-  Tbl_unit
+  Tbl_unit,
+  sequelize,
+  Wh_product_lotno: Wh_product_lotnoModel
 } = require("../models/mainModel");
 const { Op } = require("sequelize");
 
@@ -287,6 +289,93 @@ exports.deleteWh_stockcard = async (req, res) => {
 };
 
 
+// exports.Query_Wh_stockcard = async (req, res) => {
+//   try {
+//     const { offset, limit, rdate, rdate1, rdate2, product_code, product_name, trdate, refno } = req.body;
+
+//     let whereClause = {};
+
+//     if (rdate1 && rdate2) {
+//       whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+//     } else if (rdate) {
+//       whereClause.rdate = rdate;
+//     }
+
+//     if (product_code) {
+//       whereClause.product_code = product_code;
+//     }
+
+//     let productWhereClause = {};
+//     if (product_name) {
+//       productWhereClause.product_name = {
+//         [Op.like]: `%${product_name}%`
+//       };
+//     }
+
+//     const stockcardShow = await Wh_stockcardModel.findAll({
+//       attributes: [
+//         'product_code',
+//         'unit_code',
+//         'refno',
+//         'rdate',
+//         'trdate',
+//         'beg1',
+//         'in1',
+//         'out1',
+//         'upd1',
+//         'uprice',
+//         'beg1_amt',
+//         'in1_amt',
+//         'out1_amt',
+//         'upd1_amt',
+//         'balance',
+//         'balance_amount',
+//         'myear',
+//         'monthh'
+//       ],
+//       where: whereClause,
+//       include: [
+//         {
+//           model: Tbl_product,
+//           attributes: ['product_code', 'product_name', 'typeproduct_code'],
+//           required: true,
+//           where: Object.keys(productWhereClause).length > 0 ? productWhereClause : undefined
+//         },
+//         {
+//           model: Tbl_unit,
+//           attributes: ['unit_code', 'unit_name'],
+//           required: false
+//         }
+//       ],
+//       order: [
+//         [{ model: Tbl_product }, 'typeproduct_code', 'ASC'],
+//         [{ model: Tbl_product }, 'product_name', 'ASC'],
+//         ['trdate', 'ASC'],
+//         ['refno', 'ASC']
+//       ],
+//       offset: offset || 0,
+//       limit: limit || 10
+//     });
+
+//     const transformedData = stockcardShow.map((item, index) => ({
+//       ...item.get({ plain: true }),
+//       id: (offset || 0) + index + 1
+//     }));
+
+//     res.status(200).send({
+//       result: true,
+//       data: transformedData
+//     });
+
+//   } catch (error) {
+//     console.error("Error in Query_Wh_stockcard:", error);
+//     res.status(500).send({
+//       result: false,
+//       message: error.message || "An error occurred while fetching stockcard data"
+//     });
+//   }
+// };
+
 exports.Query_Wh_stockcard = async (req, res) => {
   try {
     const { offset, limit, rdate, rdate1, rdate2, product_code, product_name, trdate, refno } = req.body;
@@ -310,6 +399,27 @@ exports.Query_Wh_stockcard = async (req, res) => {
       };
     }
 
+    // First, get all records for this product to properly calculate balances
+    let productCodes = [];
+
+    if (product_code) {
+      productCodes.push(product_code);
+    } else if (product_name) {
+      // Find all product codes matching the product name
+      try {
+        const matchingProducts = await Tbl_product.findAll({
+          attributes: ['product_code'],
+          where: productWhereClause
+        });
+
+        productCodes = matchingProducts.map(product => product.product_code);
+      } catch (err) {
+        console.error('Error finding matching products:', err);
+        productCodes = [];
+      }
+    }
+
+    // Fetch the stockcard data
     const stockcardShow = await Wh_stockcardModel.findAll({
       attributes: [
         'product_code',
@@ -346,19 +456,143 @@ exports.Query_Wh_stockcard = async (req, res) => {
         }
       ],
       order: [
-        [{ model: Tbl_product }, 'typeproduct_code', 'ASC'],
-        [{ model: Tbl_product }, 'product_name', 'ASC'],
         ['trdate', 'ASC'],
         ['refno', 'ASC']
       ],
-      offset: offset || 0,
-      limit: limit || 10
+      offset: offset ? parseInt(offset) : 0,
+      limit: limit ? parseInt(limit) : 10
     });
 
-    const transformedData = stockcardShow.map((item, index) => ({
-      ...item.get({ plain: true }),
-      id: (offset || 0) + index + 1
-    }));
+    // Convert to plain objects
+    const plainData = stockcardShow.map(item => item.get({ plain: true }));
+
+    // Group by product_code
+    const productGroups = {};
+    plainData.forEach(item => {
+      if (!item.product_code) return;
+
+      if (!productGroups[item.product_code]) {
+        productGroups[item.product_code] = [];
+      }
+      productGroups[item.product_code].push(item);
+    });
+
+    // Process each product group and recalculate balances
+    const transformedData = [];
+
+    // Check if we have any product groups
+    if (Object.keys(productGroups).length === 0) {
+      res.status(200).send({
+        result: true,
+        data: []
+      });
+      return;
+    }
+
+    // Process each product group
+    Object.keys(productGroups).forEach(productCode => {
+      const items = productGroups[productCode];
+
+      // Skip if no items for this product code
+      if (!items || items.length === 0) return;
+
+      // Sort by date and refno (to ensure chronological order)
+      items.sort((a, b) => {
+        const dateA = a.trdate ? new Date(a.trdate) : new Date(0);
+        const dateB = b.trdate ? new Date(b.trdate) : new Date(0);
+
+        if (dateA.getTime() === dateB.getTime()) {
+          return (a.refno || '').localeCompare(b.refno || '');
+        }
+        return dateA - dateB;
+      });
+
+      // Reset running balances for each product
+      let runningBalance = 0;
+      let runningBalanceAmount = 0;
+
+      // Process each record for this product
+      items.forEach((item, index) => {
+        try {
+          // Safe handling of all numeric values with proper defaults
+          const itemBeg1 = Number(item.beg1 || 0);
+          const itemIn1 = Number(item.in1 || 0);
+          const itemOut1 = Number(item.out1 || 0);
+          const itemUpd1 = Number(item.upd1 || 0);
+
+          // Calculate current transaction effect
+          const currentEffect = itemBeg1 + itemIn1 - itemOut1 + itemUpd1;
+
+          // Update running balances
+          runningBalance += currentEffect;
+
+          // Calculate monetary values
+          const uprice = Number(item.uprice || 0);
+          const currentEffectAmount =
+            (itemBeg1 * uprice) +
+            (itemIn1 * uprice) -
+            (itemOut1 * uprice) +
+            (itemUpd1 * uprice);
+
+          runningBalanceAmount += currentEffectAmount;
+
+          // Create a new item object with all required properties
+          const newItem = {
+            // Copy all original item properties
+            ...item,
+
+            // Override with recalculated balances
+            balance: runningBalance,
+            balance_amount: runningBalanceAmount,
+
+            // Add ID for frontend
+            id: (offset ? parseInt(offset) : 0) + transformedData.length + 1
+          };
+
+          transformedData.push(newItem);
+        } catch (err) {
+          console.error('Error processing item:', err);
+          // Skip this item if there's an error in processing
+        }
+      });
+    });
+
+    // Final sort if needed
+    try {
+      transformedData.sort((a, b) => {
+        // Get product info safely
+        const aProduct = a.Tbl_product || {};
+        const bProduct = b.Tbl_product || {};
+
+        // First by product type
+        const aType = aProduct.typeproduct_code || '';
+        const bType = bProduct.typeproduct_code || '';
+        if (aType !== bType) {
+          return aType.localeCompare(bType);
+        }
+
+        // Then by product name
+        const aName = aProduct.product_name || '';
+        const bName = bProduct.product_name || '';
+        if (aName !== bName) {
+          return aName.localeCompare(bName);
+        }
+
+        // Then by date
+        const dateA = a.trdate ? new Date(a.trdate) : new Date(0);
+        const dateB = b.trdate ? new Date(b.trdate) : new Date(0);
+
+        if (dateA.getTime() !== dateB.getTime()) {
+          return dateA - dateB;
+        }
+
+        // Finally by refno
+        return (a.refno || '').localeCompare(b.refno || '');
+      });
+    } catch (err) {
+      console.error('Error sorting data:', err);
+      // If sorting fails, just use unsorted data
+    }
 
     res.status(200).send({
       result: true,
@@ -376,40 +610,48 @@ exports.Query_Wh_stockcard = async (req, res) => {
 
 exports.countWh_stockcard = async (req, res) => {
   try {
-    const { rdate, trdate, product_name, refno } = req.body;
+    const { rdate, rdate1, rdate2, product_name, refno } = req.body;
     const { Op } = require("sequelize");
 
+    console.log("Count API request body:", req.body);
+
     let whereClause = {};
+
+    // เรียงลำดับเงื่อนไขให้เหมือนกับ POS API
     if (rdate) {
       whereClause.rdate = rdate;
     }
-    if (trdate) {
-      whereClause.trdate = trdate;
+    if (rdate1 && rdate2) {
+      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
     }
     if (refno) {
       whereClause.refno = refno;
     }
 
-    const countOptions = {
-      where: whereClause,
-      distinct: true,
-      col: 'refno' // หรือใช้คอลัมน์อื่นที่เหมาะสม
-    };
+    console.log("Count where clause:", JSON.stringify(whereClause));
 
+    // เตรียม include สำหรับการค้นหาตาม product_name
+    let includeOptions = [];
     if (product_name) {
-      countOptions.include = [{
+      includeOptions.push({
         model: Tbl_product,
-        attributes: [],  // ไม่ต้องเลือกคอลัมน์ใดๆ จาก product
+        attributes: [],
         where: {
           product_name: {
             [Op.like]: `%${product_name}%`
           }
         },
         required: true
-      }];
+      });
     }
 
-    const amount = await Wh_stockcardModel.count(countOptions);
+    // ทำ count แบบเดียวกับ POS API (ไม่ใช้ distinct และ col)
+    const amount = await Wh_stockcardModel.count({
+      where: whereClause,
+      include: includeOptions.length > 0 ? includeOptions : undefined
+    });
+
+    console.log("Count result:", amount);
 
     res.status(200).send({
       result: true,

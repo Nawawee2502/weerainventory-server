@@ -78,43 +78,111 @@ exports.deleteBr_minnum_stock = async (req, res) => {
 
 exports.Query_Br_minnum_stock = async (req, res) => {
   try {
-    const { offset = 0, limit = 10, branch_code } = req.body;
+    const { offset = 0, limit = 10, branch_code, product_name } = req.body;
 
+    console.log("Query params:", req.body);
+
+    // สร้าง where clause สำหรับกรอง branch_code
     const whereClause = {};
     if (branch_code) {
       whereClause.branch_code = branch_code;
     }
 
+    // กำหนด include สำหรับ join กับตารางอื่น
+    const includes = [];
+
+    // Include product
+    includes.push({
+      model: Tbl_product,
+      as: 'tbl_product',
+      attributes: ['product_code', 'product_name'],
+      required: !!product_name, // บังคับให้มี join เฉพาะเมื่อมีการค้นหาชื่อสินค้า
+      where: product_name ? {
+        product_name: {
+          [Op.like]: `%${product_name}%`
+        }
+      } : undefined
+    });
+
+    // Include unit
+    includes.push({
+      model: tbl_unit,
+      as: 'tbl_unit',
+      attributes: ['unit_code', 'unit_name'],
+      required: false
+    });
+
+    // Include branch
+    includes.push({
+      model: Tbl_branch,
+      as: 'tbl_branch',
+      attributes: ['branch_code', 'branch_name'],
+      required: false
+    });
+
+    // ดึงข้อมูล
     const Br_minnum_stockModelShow = await Br_minnum_stockModel.findAll({
       where: whereClause,
-      include: [
-        {
-          model: Tbl_product,
-          as: 'tbl_product',
-          attributes: ['product_code', 'product_name'],
-          required: false
-        },
-        {
-          model: tbl_unit,
-          as: 'tbl_unit',
-          attributes: ['unit_code', 'unit_name'],
-          required: false
-        },
-        {
-          model: Tbl_branch,
-          as: 'tbl_branch',
-          attributes: ['branch_code', 'branch_name'],
-          required: false
-        }
-      ],
+      include: includes,
       order: [['product_code', 'ASC']],
       offset: parseInt(offset) || 0,
       limit: parseInt(limit) || 10
     });
 
+    console.log(`Found ${Br_minnum_stockModelShow.length} records`);
+
     res.status(200).send({ result: true, data: Br_minnum_stockModelShow });
   } catch (error) {
-    console.log(error);
+    console.error("Error in Query_Br_minnum_stock:", error);
+    res.status(500).send({ result: false, message: error.message });
+  }
+};
+
+exports.countBr_minnum_stock = async (req, res) => {
+  try {
+    const { branch_code, product_name } = req.body;
+
+    console.log("Count params:", req.body);
+
+    // สร้าง where clause
+    const whereClause = {};
+    if (branch_code) {
+      whereClause.branch_code = branch_code;
+    }
+
+    let countOptions = {
+      where: whereClause,
+      distinct: true,
+      col: 'product_code'
+    };
+
+    // ถ้ามีการค้นหาตามชื่อสินค้า ต้องใช้ include
+    if (product_name) {
+      countOptions = {
+        where: whereClause,
+        include: [{
+          model: Tbl_product,
+          as: 'tbl_product',
+          attributes: [],
+          where: {
+            product_name: {
+              [Op.like]: `%${product_name}%`
+            }
+          },
+          required: true
+        }],
+        distinct: true,
+        col: 'product_code'
+      };
+    }
+
+    const amount = await Br_minnum_stockModel.count(countOptions);
+
+    console.log(`Count result: ${amount}`);
+
+    res.status(200).send({ result: true, data: amount });
+  } catch (error) {
+    console.error("Error in countBr_minnum_stock:", error);
     res.status(500).send({ result: false, message: error.message });
   }
 };
@@ -175,28 +243,6 @@ exports.SearchBr_minnum_stock = async (req, res) => {
     });
 
     res.status(200).send({ result: true, data: Br_minnum_stockShow });
-  } catch (error) {
-    console.log(error);
-    res.status(500).send({ result: false, message: error.message });
-  }
-};
-
-exports.countBr_minnum_stock = async (req, res) => {
-  try {
-    const { branch_code } = req.body;
-
-    const whereClause = {};
-    if (branch_code) {
-      whereClause.branch_code = branch_code;
-    }
-
-    const amount = await Br_minnum_stockModel.count({
-      where: whereClause,
-      distinct: true,
-      col: 'product_code'
-    });
-
-    res.status(200).send({ result: true, data: amount });
   } catch (error) {
     console.log(error);
     res.status(500).send({ result: false, message: error.message });
