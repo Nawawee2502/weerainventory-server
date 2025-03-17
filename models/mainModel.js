@@ -1201,6 +1201,19 @@ db.Tbl_product.hasMany(db.Kt_safdt, {
   sourceKey: 'product_code', // sourceKey ของ Product
 });
 
+// Add user association for kt_saf
+db.Kt_saf.belongsTo(db.User, {
+  foreignKey: 'user_code',
+  targetKey: 'user_code',
+  as: 'user'
+});
+
+db.User.hasMany(db.Kt_saf, {
+  foreignKey: 'user_code',
+  sourceKey: 'user_code',
+  as: 'kt_saf'
+});
+
 
 //branch
 db.Br_stockcard = require("./br_stockcardModel")(sequelize, Sequelize)

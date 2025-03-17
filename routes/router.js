@@ -377,7 +377,8 @@ const {
   Kt_safAllrdate,
   Kt_safrefno,
   searchKt_safRunno,
-  Kt_safByRefno
+  Kt_safByRefno,
+  countKt_saf
 } = require("../controllers/kt_safController")
 
 const {
@@ -416,7 +417,7 @@ const {
   Br_safAllrdate,
   Br_safrefno,
   searchBr_safRunno,
-  Br_safByRefno
+  Br_safByRefno,
 } = require("../controllers/br_safController")
 
 const {
@@ -894,12 +895,13 @@ router.post("/Kt_safAllrdate", Kt_safAllrdate);
 router.post("/Kt_safrefno", Kt_safrefno);
 router.post("/Kt_safbyrefno", Kt_safByRefno);
 router.post("/searchKt_safRunno", searchKt_safRunno)
+router.post("/countKt_saf", countKt_saf);
 
 router.post("/addKt_safdt", addKt_safdt);
 router.post("/updateKt_safdt", updateKt_safdt);
 router.post("/deleteKt_safdt", deleteKt_safdt);
 router.post("/countKt_safdt", countKt_safdt);
-router.post("/Kt_saftAlljoindt", Kt_safdtAlljoindt)
+router.post("/Kt_safdtAlljoindt", Kt_safdtAlljoindt);
 
 router.post("/addKt_stockcard", addKt_stockcard);
 router.post("/updateKt_stockcard", updateKt_stockcard);
