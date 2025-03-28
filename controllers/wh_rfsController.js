@@ -185,30 +185,14 @@ exports.addWh_rfs = async (req, res) => {
   }
 };
 
-
-
-
 exports.updateWh_rfs = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
     const updateData = req.body;
+    console.log("Received update data:", updateData);
 
-    // First get all detail records to calculate new balances
-    const detailRecords = await Wh_rfsdt.findAll({
-      where: { refno: updateData.refno },
-      transaction: t
-    });
-
-    // Calculate new balance values
-    const balance = detailRecords.reduce((sum, record) => sum + Number(record.qty || 0), 0);
-    const balance_amount = detailRecords.reduce((sum, record) => {
-      const qty = Number(record.qty || 0);
-      const uprice = Number(record.uprice || 0);
-      return sum + (qty * uprice);
-    }, 0);
-
-    // Update the main record with new values including balances
+    // First update the header record
     const updateResult = await Wh_rfs.update(
       {
         rdate: updateData.rdate,
@@ -217,22 +201,52 @@ exports.updateWh_rfs = async (req, res) => {
         monthh: updateData.monthh,
         supplier_code: updateData.supplier_code,
         branch_code: updateData.branch_code,
-        taxable: updateData.taxable,
-        nontaxable: updateData.nontaxable,
-        total: updateData.total,
-        instant_saving: updateData.instant_saving,
-        delivery_surcharge: updateData.delivery_surcharge,
-        sale_tax: updateData.sale_tax,
-        total_due: updateData.total_due,
+        taxable: updateData.taxable || 0,
+        nontaxable: updateData.nontaxable || 0,
+        total: updateData.total || 0,
+        instant_saving: updateData.instant_saving || 0,
+        delivery_surcharge: updateData.delivery_surcharge || 0,
+        sale_tax: updateData.sale_tax || 0,
+        total_due: updateData.total_due || 0,
         user_code: updateData.user_code,
-        balance: balance,
-        balance_amount: balance_amount
       },
       {
         where: { refno: updateData.refno },
         transaction: t
       }
     );
+
+    // Delete existing detail records so we can insert fresh ones
+    await Wh_rfsdt.destroy({
+      where: { refno: updateData.refno },
+      transaction: t
+    });
+
+    console.log("Deleted existing details, now inserting new products:",
+      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+
+    // Insert new detail records
+    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+      // Add a unique constraint check and potentially modify the data
+      const productsToInsert = updateData.productArrayData.map((item, index) => ({
+        ...item,
+        // Explicitly set the refno to ensure consistency
+        refno: updateData.refno,
+        // Optional: Add a unique index to prevent conflicts
+        uniqueIndex: `${updateData.refno}_${index}`
+      }));
+
+      // Use upsert instead of bulkCreate to handle potential conflicts
+      const insertPromises = productsToInsert.map(product =>
+        Wh_rfsdt.upsert(product, {
+          transaction: t,
+          // If you want to update existing records
+          conflictFields: ['refno', 'product_code']
+        })
+      );
+
+      await Promise.all(insertPromises);
+    }
 
     // Update related stockcard records if needed
     await Wh_stockcard.update(
@@ -625,5 +639,66 @@ exports.searchWh_rfsRunno = async (req, res) => {
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
+  }
+};
+
+exports.getWhRfsByRefno = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // Fetch the specific record by refno
+    const orderData = await Wh_rfs.findOne({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'supplier_code', 'branch_code', 'taxable', 'nontaxable',
+        'total', 'instant_saving', 'delivery_surcharge',
+        'sale_tax', 'total_due', 'user_code', 'created_at'
+      ],
+      include: [
+        {
+          model: Tbl_supplier,
+          attributes: ['supplier_code', 'supplier_name'],
+          required: false
+        },
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
+      where: { refno: refno }
+    });
+
+    if (!orderData) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: orderData
+    });
+
+  } catch (error) {
+    console.error("Error in getRfsByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };

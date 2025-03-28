@@ -141,56 +141,44 @@ exports.updateBr_rfs = async (req, res) => {
 
   try {
     const updateData = req.body;
+    console.log("Received update data:", updateData);
 
-    const detailRecords = await br_rfsdtModel.findAll({
-      where: { refno: updateData.refno },
+    // ดึงข้อมูลจาก headerData
+    const headerData = updateData.headerData;
+    if (!headerData || !headerData.refno) {
+      throw new Error('Missing required header data or refno');
+    }
+
+    // First update the header record
+    const updateResult = await br_rfsModel.update(
+      {
+        rdate: headerData.rdate,
+        trdate: headerData.trdate,
+        myear: headerData.myear,
+        monthh: headerData.monthh,
+        supplier_code: headerData.supplier_code,
+        branch_code: headerData.branch_code,
+        taxable: headerData.taxable || 0,
+        nontaxable: headerData.nontaxable || 0,
+        total: headerData.total || 0,
+        user_code: headerData.user_code,
+      },
+      {
+        where: { refno: headerData.refno },
+        transaction: t
+      }
+    );
+
+    // Delete existing detail records
+    await br_rfsdtModel.destroy({
+      where: { refno: headerData.refno },
       transaction: t
     });
 
-    const balance = detailRecords.reduce((sum, record) => sum + Number(record.qty || 0), 0);
-    const balance_amount = detailRecords.reduce((sum, record) => {
-      const qty = Number(record.qty || 0);
-      const uprice = Number(record.uprice || 0);
-      return sum + (qty * uprice);
-    }, 0);
-
-    const updateResult = await br_rfsModel.update(
-      {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh,
-        branch_code: updateData.branch_code,
-        supplier_code: updateData.supplier_code,
-        taxable: updateData.taxable || 0,
-        nontaxable: updateData.nontaxable || 0,
-        total: updateData.total || 0,
-        instant_saving: updateData.instant_saving || 0,
-        delivery_surcharge: updateData.delivery_surcharge || 0,
-        sale_tax: updateData.sale_tax || 0,
-        total_due: updateData.total_due || 0,
-        user_code: updateData.user_code,
-        balance: balance,
-        balance_amount: balance_amount
-      },
-      {
-        where: { refno: updateData.refno },
-        transaction: t
-      }
-    );
-
-    await Br_stockcard.update(
-      {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh
-      },
-      {
-        where: { refno: updateData.refno },
-        transaction: t
-      }
-    );
+    // Insert detail records
+    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+      await br_rfsdtModel.bulkCreate(updateData.productArrayData, { transaction: t });
+    }
 
     await t.commit();
     res.status(200).send({
@@ -300,39 +288,21 @@ exports.Br_rfsAllrdate = async (req, res) => {
 
 exports.Br_rfsAlljoindt = async (req, res) => {
   try {
-    const { offset, limit, rdate1, rdate2, rdate, supplier_code, branch_code, product_code } = req.body;
-    const { refno } = req.body; // Added to handle single refno lookup
+    const { offset, limit, rdate1, rdate2, rdate, supplier_code, branch_code, product_code, refno } = req.body;
 
     let whereClause = {};
 
-    // If refno is provided, use that as the primary filter
     if (refno) {
       whereClause.refno = refno;
     } else {
-      // Otherwise use the date range filters
       if (rdate) whereClause.rdate = rdate;
       if (rdate1 && rdate2) whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
       if (supplier_code) whereClause.supplier_code = supplier_code;
       if (branch_code) whereClause.branch_code = branch_code;
     }
 
-    // Only run the count query if we're doing a date range search (not a specific refno)
-    let totalCount = 0;
-    if (!refno && rdate1 && rdate2) {
-      // Create a proper query with replacements array
-      const totalResult = await sequelize.query(
-        'SELECT COUNT(refno) as count FROM br_rfs WHERE trdate BETWEEN ? AND ?',
-        {
-          replacements: [rdate1, rdate2],
-          type: sequelize.QueryTypes.SELECT
-        }
-      );
-
-      totalCount = totalResult[0].count;
-    }
-
-    // Fetch the header data
-    const br_rfs_headers = await br_rfsModel.findAll({
+    // Fetch the data with proper includes
+    const br_rfs_data = await br_rfsModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'supplier_code', 'branch_code', 'taxable', 'nontaxable',
@@ -359,13 +329,33 @@ exports.Br_rfsAlljoindt = async (req, res) => {
       where: whereClause,
       order: [['refno', 'ASC']],
       offset: parseInt(offset) || 0,
-      limit: refno ? null : (parseInt(limit) || 10) // Don't limit if looking up by refno
+      limit: refno ? null : (parseInt(limit) || 10)
     });
+
+    // Transform data to include explict properties
+    const transformedData = br_rfs_data.map(item => {
+      const plainItem = item.toJSON();
+      return {
+        ...plainItem,
+        branch_name: plainItem.tbl_branch?.branch_name || '-',
+        supplier_name: plainItem.tbl_supplier?.supplier_name || '-',
+        username: plainItem.user?.username || '-'
+      };
+    });
+
+    console.log("Br_rfsAlljoindt transformed data (excerpt):",
+      transformedData.map(item => ({
+        refno: item.refno,
+        branch_code: item.branch_code,
+        branch_name: item.branch_name,
+        supplier_name: item.supplier_name
+      }))
+    );
 
     res.status(200).send({
       result: true,
-      data: br_rfs_headers,
-      total: refno ? br_rfs_headers.length : totalCount
+      data: transformedData,
+      total: transformedData.length
     });
 
   } catch (error) {
@@ -481,5 +471,65 @@ exports.searchBr_rfsRunno = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: error });
+  }
+};
+
+exports.getRfsByRefno = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // Fetch the specific record by refno
+    const orderData = await br_rfsModel.findOne({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'supplier_code', 'branch_code', 'taxable', 'nontaxable',
+        'total', 'user_code', 'created_at'
+      ],
+      include: [
+        {
+          model: Tbl_supplier,
+          attributes: ['supplier_code', 'supplier_name'],
+          required: false
+        },
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
+      where: { refno: refno }
+    });
+
+    if (!orderData) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: orderData
+    });
+
+  } catch (error) {
+    console.error("Error in getRfsByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };

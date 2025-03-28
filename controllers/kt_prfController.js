@@ -121,18 +121,9 @@ exports.updateKt_prf = async (req, res) => {
 
   try {
     const updateData = req.body;
+    console.log("Received update data:", updateData);
 
-    const detailRecords = await Kt_prfdtModel.findAll({
-      where: { refno: updateData.refno },
-      transaction: t
-    });
-
-    const total = detailRecords.reduce((sum, record) => {
-      const qty = Number(record.qty || 0);
-      const uprice = Number(record.uprice || 0);
-      return sum + (qty * uprice);
-    }, 0);
-
+    // First update the header record
     const updateResult = await Kt_prfModel.update(
       {
         rdate: updateData.rdate,
@@ -140,7 +131,7 @@ exports.updateKt_prf = async (req, res) => {
         myear: updateData.myear,
         monthh: updateData.monthh,
         kitchen_code: updateData.kitchen_code,
-        total: updateData.total,
+        total: updateData.total || 0,
         user_code: updateData.user_code,
       },
       {
@@ -149,18 +140,37 @@ exports.updateKt_prf = async (req, res) => {
       }
     );
 
-    await Kt_stockcard.update(
-      {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh
-      },
-      {
-        where: { refno: updateData.refno },
-        transaction: t
-      }
-    );
+    // Delete existing detail records so we can insert fresh ones
+    await Kt_prfdtModel.destroy({
+      where: { refno: updateData.refno },
+      transaction: t
+    });
+
+    console.log("Deleted existing details, now inserting new products:",
+      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+
+    // Insert new detail records
+    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+      // Add a unique constraint check and potentially modify the data
+      const productsToInsert = updateData.productArrayData.map((item, index) => ({
+        ...item,
+        // Explicitly set the refno to ensure consistency
+        refno: updateData.refno,
+        // Optional: Add a unique index to prevent conflicts
+        uniqueIndex: `${updateData.refno}_${index}`
+      }));
+
+      // Use upsert instead of bulkCreate to handle potential conflicts
+      const insertPromises = productsToInsert.map(product =>
+        Kt_prfdtModel.upsert(product, {
+          transaction: t,
+          // If you want to update existing records
+          conflictFields: ['refno', 'product_code']
+        })
+      );
+
+      await Promise.all(insertPromises);
+    }
 
     await t.commit();
     res.status(200).send({
@@ -410,18 +420,55 @@ exports.searchKt_prfrefno = async (req, res) => {
 
 exports.Kt_prfrefno = async (req, res) => {
   try {
-    const { month, year } = req.body;
+    const { kitchen_code, month, year } = req.body;
+
+    if (!kitchen_code) {
+      throw new Error('Kitchen code is required');
+    }
+
+    // สร้างรูปแบบของ refno โดยใช้ prefix 3 ตัวแรกของ kitchen_code
+    const kitchenPrefix = kitchen_code.substring(0, 3).toUpperCase();
+
+    // สร้าง pattern สำหรับค้นหา
+    const pattern = `KTPRF${kitchenPrefix}${year}${month}%`;
+
+    // ค้นหา refno ล่าสุดสำหรับครัวและเดือนนี้
     const refno = await Kt_prfModel.findOne({
       where: {
-        monthh: month,
-        myear: `20${year}`
+        refno: {
+          [Op.like]: pattern
+        },
+        kitchen_code: kitchen_code
       },
       order: [['refno', 'DESC']],
     });
-    res.status(200).send({ result: true, data: refno });
+
+    // ถ้าไม่พบ refno เริ่มที่ 001
+    if (!refno) {
+      const newRefno = `KTPRF${kitchenPrefix}${year}${month}001`;
+      res.status(200).send({
+        result: true,
+        data: { refno: newRefno }
+      });
+      return;
+    }
+
+    // ดึงและเพิ่มหมายเลขรัน
+    const currentRunNo = parseInt(refno.refno.slice(-3));
+    const nextRunNo = (currentRunNo + 1).toString().padStart(3, '0');
+    const newRefno = `KTPRF${kitchenPrefix}${year}${month}${nextRunNo}`;
+
+    res.status(200).send({
+      result: true,
+      data: { refno: newRefno }
+    });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: error.message });
+    console.error('Generate refno error:', error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
@@ -439,5 +486,59 @@ exports.searchKt_prfRunno = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: error });
+  }
+};
+
+exports.getKtPrfByRefno = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // Fetch the specific record by refno
+    const orderData = await Kt_prfModel.findOne({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'kitchen_code', 'total', 'user_code', 'created_at'
+      ],
+      include: [
+        {
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
+      where: { refno: refno }
+    });
+
+    if (!orderData) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: orderData
+    });
+
+  } catch (error) {
+    console.error("Error in getPrfByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };

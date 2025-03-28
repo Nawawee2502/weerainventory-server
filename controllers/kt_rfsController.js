@@ -176,19 +176,21 @@ exports.updateKt_rfs = async (req, res) => {
 
   try {
     const updateData = req.body;
+    console.log("Received update data:", updateData);
 
-    const detailRecords = await Kt_rfsdt.findAll({
-      where: { refno: updateData.refno },
-      transaction: t
-    });
+    // ตรวจสอบว่ามี refno หรือไม่
+    if (!updateData || !updateData.refno) {
+      await t.rollback();
+      return res.status(400).send({
+        result: false,
+        message: 'Missing required field: refno',
+        receivedData: updateData
+      });
+    }
 
-    const balance = detailRecords.reduce((sum, record) => sum + Number(record.qty || 0), 0);
-    const balance_amount = detailRecords.reduce((sum, record) => {
-      const qty = Number(record.qty || 0);
-      const uprice = Number(record.uprice || 0);
-      return sum + (qty * uprice);
-    }, 0);
+    console.log("Using refno for update:", updateData.refno);
 
+    // First update the header record
     const updateResult = await Kt_rfs.update(
       {
         rdate: updateData.rdate,
@@ -205,27 +207,46 @@ exports.updateKt_rfs = async (req, res) => {
         sale_tax: updateData.sale_tax || 0,
         total_due: updateData.total_due || 0,
         user_code: updateData.user_code,
-        balance: balance,
-        balance_amount: balance_amount
       },
       {
-        where: { refno: updateData.refno },
+        where: { refno: updateData.refno }, // ต้องมีค่าที่แน่นอน
         transaction: t
       }
     );
 
-    await Kt_stockcard.update(
-      {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh
-      },
-      {
-        where: { refno: updateData.refno },
-        transaction: t
+    // Delete existing detail records so we can insert fresh ones
+    await Kt_rfsdt.destroy({
+      where: { refno: updateData.refno },
+      transaction: t
+    });
+
+    console.log("Deleted existing details, now inserting new products:",
+      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+
+    // Insert new detail records
+    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+      // ตรวจสอบและแน่ใจว่าทุก product มี refno
+      const productsToInsert = updateData.productArrayData.map((item, index) => ({
+        ...item,
+        // กำหนดค่า refno ให้ชัดเจนเพื่อความสอดคล้อง
+        refno: updateData.refno,
+        // Optional: เพิ่ม unique index เพื่อป้องกันการขัดแย้ง
+        uniqueIndex: `${updateData.refno}_${index}`
+      }));
+
+      // การแก้ไขสำคัญ: ใช้ for...of แทน Promise.all เพื่อจัดการข้อผิดพลาดได้ดีขึ้น
+      for (const product of productsToInsert) {
+        try {
+          await Kt_rfsdt.upsert(product, {
+            transaction: t,
+            conflictFields: ['refno', 'product_code']
+          });
+        } catch (error) {
+          console.error('Error inserting product:', product.product_code, error);
+          throw new Error(`Failed to insert product ${product.product_code}: ${error.message}`);
+        }
       }
-    );
+    }
 
     await t.commit();
     res.status(200).send({
@@ -239,7 +260,8 @@ exports.updateKt_rfs = async (req, res) => {
     console.error('Update Error:', error);
     res.status(500).send({
       result: false,
-      message: error.message
+      message: error.message,
+      trace: error.stack
     });
   }
 };
@@ -536,5 +558,73 @@ exports.searchKt_rfsRunno = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: error });
+  }
+};
+
+exports.getKtRfsByRefno = async (req, res) => {
+  try {
+    // ดึงค่า refno จาก request body และตรวจสอบรูปแบบ
+    let refnoValue = req.body.refno;
+
+    // ตรวจสอบว่า refno เป็น object หรือไม่
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+      console.log('Extracted refno from object:', refnoValue);
+    }
+
+    if (!refnoValue) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required (not found or empty)'
+      });
+    }
+
+    // ใช้ค่า refnoValue ที่แปลงแล้วในการค้นหาข้อมูล
+    const orderData = await Kt_rfs.findOne({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'supplier_code', 'kitchen_code', 'taxable', 'nontaxable',
+        'total', 'instant_saving', 'delivery_surcharge',
+        'sale_tax', 'total_due', 'user_code', 'created_at'
+      ],
+      include: [
+        {
+          model: Tbl_supplier,
+          attributes: ['supplier_code', 'supplier_name'],
+          required: false
+        },
+        {
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
+      where: { refno: refnoValue }
+    });
+
+    if (!orderData) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: orderData
+    });
+
+  } catch (error) {
+    console.error("Error in getKtRfsByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message || 'An error occurred'
+    });
   }
 };

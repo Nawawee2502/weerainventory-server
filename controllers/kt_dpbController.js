@@ -9,6 +9,8 @@ const {
   User,
   Kt_stockcard
 } = require("../models/mainModel");
+const { Op } = require("sequelize");
+
 
 exports.addKt_dpb = async (req, res) => {
   const t = await sequelize.transaction();
@@ -121,69 +123,74 @@ exports.updateKt_dpb = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    const { headerData, productArrayData, footerData } = req.body;
+    const updateData = req.body;
+    console.log("Received update data:", updateData);
 
-    if (!headerData || !headerData.refno) {
-      throw new Error('Missing refno in header data');
-    }
-
-    // อัพเดทข้อมูลส่วนหัว
-    await Kt_dpbModel.update(
+    // First update the header record
+    const updateResult = await Kt_dpbModel.update(
       {
-        rdate: headerData.rdate,
-        trdate: headerData.trdate,
-        myear: headerData.myear,
-        monthh: headerData.monthh,
-        kitchen_code: headerData.kitchen_code,
-        branch_code: headerData.branch_code,
-        taxable: headerData.taxable || 0,
-        nontaxable: headerData.nontaxable || 0,
-        total: footerData.total || 0,
-        user_code: headerData.user_code
+        rdate: updateData.rdate,
+        trdate: updateData.trdate,
+        myear: updateData.myear,
+        monthh: updateData.monthh,
+        kitchen_code: updateData.kitchen_code,
+        branch_code: updateData.branch_code,
+        taxable: updateData.taxable || 0,
+        nontaxable: updateData.nontaxable || 0,
+        total: updateData.total || 0,
+        user_code: updateData.user_code,
       },
       {
-        where: { refno: headerData.refno },
+        where: { refno: updateData.refno },
         transaction: t
       }
     );
 
-    // ลบข้อมูลสินค้าเก่าทั้งหมด
+    // Delete existing detail records so we can insert fresh ones
     await Kt_dpbdtModel.destroy({
-      where: { refno: headerData.refno },
+      where: { refno: updateData.refno },
       transaction: t
     });
 
-    // เพิ่มข้อมูลสินค้าใหม่
-    if (Array.isArray(productArrayData) && productArrayData.length > 0) {
-      await Kt_dpbdtModel.bulkCreate(productArrayData, { transaction: t });
+    console.log("Deleted existing details, now inserting new products:",
+      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+
+    // Insert new detail records
+    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+      // Add a unique constraint check and potentially modify the data
+      const productsToInsert = updateData.productArrayData.map((item, index) => ({
+        ...item,
+        // Explicitly set the refno to ensure consistency
+        refno: updateData.refno,
+        // Optional: Add a unique index to prevent conflicts
+        uniqueIndex: `${updateData.refno}_${index}`
+      }));
+
+      // Use upsert instead of bulkCreate to handle potential conflicts
+      const insertPromises = productsToInsert.map(product =>
+        Kt_dpbdtModel.upsert(product, {
+          transaction: t,
+          // If you want to update existing records
+          conflictFields: ['refno', 'product_code']
+        })
+      );
+
+      await Promise.all(insertPromises);
     }
 
-    // อัพเดท stockcard (ถ้าจำเป็น)
-    await Kt_stockcard.update(
-      {
-        rdate: headerData.rdate,
-        trdate: headerData.trdate,
-        myear: headerData.myear,
-        monthh: headerData.monthh
-      },
-      {
-        where: { refno: headerData.refno },
-        transaction: t
-      }
-    );
-
     await t.commit();
-    res.status(200).json({
+    res.status(200).send({
       result: true,
-      message: 'Updated successfully'
+      message: 'Updated successfully',
+      updatedRows: updateResult[0]
     });
 
   } catch (error) {
     await t.rollback();
     console.error('Update Error:', error);
-    res.status(500).json({
+    res.status(500).send({
       result: false,
-      message: error.message || 'Failed to update dispatch'
+      message: error.message
     });
   }
 };
@@ -454,20 +461,60 @@ exports.searchKt_dpbrefno = async (req, res) => {
   }
 };
 
+
 exports.Kt_dpbrefno = async (req, res) => {
   try {
-    const { month, year } = req.body;
+    const { kitchen_code, date } = req.body;
+
+    if (!kitchen_code) {
+      throw new Error('Kitchen code is required');
+    }
+
+    // Parse the date and format it as YYMM
+    const formattedDate = date ? new Date(date) : new Date();
+    const year = formattedDate.getFullYear().toString().slice(-2);
+    const month = String(formattedDate.getMonth() + 1).padStart(2, '0');
+    const dateStr = `${year}${month}`;
+
+    // Create the pattern for searching
+    const pattern = `KTDPB${kitchen_code}${dateStr}%`;
+
+    // Find the latest reference number for this kitchen and month
     const refno = await Kt_dpbModel.findOne({
       where: {
-        monthh: month,
-        myear: `20${year}`
+        refno: {
+          [Op.like]: pattern
+        }
       },
       order: [['refno', 'DESC']],
     });
-    res.status(200).send({ result: true, data: refno });
+
+    // If no existing refno found, start with 001
+    if (!refno) {
+      const newRefno = `KTDPB${kitchen_code}${dateStr}001`;
+      res.status(200).send({
+        result: true,
+        data: { refno: newRefno }
+      });
+      return;
+    }
+
+    // Extract and increment the running number
+    const currentRunNo = parseInt(refno.refno.slice(-3));
+    const nextRunNo = (currentRunNo + 1).toString().padStart(3, '0');
+    const newRefno = `KTDPB${kitchen_code}${dateStr}${nextRunNo}`;
+
+    res.status(200).send({
+      result: true,
+      data: { refno: newRefno }
+    });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: error.message });
+    console.error('Generate refno error:', error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
@@ -488,3 +535,69 @@ exports.searchKt_dpbRunno = async (req, res) => {
   }
 };
 
+exports.getKtDpbByRefno = async (req, res) => {
+  try {
+    // Extract refno properly
+    let refnoValue = req.body.refno;
+
+    // Handle if refno is an object (like in the error message)
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+      console.log('Extracted refno from object:', refnoValue);
+    }
+
+    if (!refnoValue) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // Now use the extracted string value in your query
+    const orderData = await Kt_dpbModel.findOne({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'kitchen_code', 'branch_code', 'taxable', 'nontaxable',
+        'total', 'user_code', 'created_at'
+      ],
+      include: [
+        {
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
+          required: false
+        },
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
+      where: { refno: refnoValue } // Use the extracted value
+    });
+
+    if (!orderData) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: orderData
+    });
+
+  } catch (error) {
+    console.error("Error in getKtDpbByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
+  }
+};

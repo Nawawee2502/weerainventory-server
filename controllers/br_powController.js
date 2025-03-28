@@ -20,7 +20,7 @@ exports.addBr_pow = async (req, res) => {
     const { headerData, productArrayData, footerData } = req.body;
     console.log("headerData", headerData);
 
-    if (!headerData.refno || !headerData.branch_code || !headerData.supplier_code) {
+    if (!headerData.refno || !headerData.branch_code) {
       throw new Error('Missing required fields');
     }
 
@@ -133,19 +133,9 @@ exports.updateBr_pow = async (req, res) => {
 
   try {
     const updateData = req.body;
+    console.log("Received update data:", updateData);
 
-    const detailRecords = await Br_powdtModel.findAll({
-      where: { refno: updateData.refno },
-      transaction: t
-    });
-
-    const balance = detailRecords.reduce((sum, record) => sum - Number(record.qty || 0), 0); // Negative for POW
-    const balance_amount = detailRecords.reduce((sum, record) => {
-      const qty = Number(record.qty || 0);
-      const uprice = Number(record.uprice || 0);
-      return sum - (qty * uprice); // Negative for POW
-    }, 0);
-
+    // First update the header record
     const updateResult = await Br_powModel.update(
       {
         rdate: updateData.rdate,
@@ -158,8 +148,6 @@ exports.updateBr_pow = async (req, res) => {
         nontaxable: updateData.nontaxable || 0,
         total: updateData.total || 0,
         user_code: updateData.user_code,
-        balance: balance,
-        balance_amount: balance_amount
       },
       {
         where: { refno: updateData.refno },
@@ -167,18 +155,125 @@ exports.updateBr_pow = async (req, res) => {
       }
     );
 
-    await Br_stockcard.update(
-      {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh
-      },
-      {
-        where: { refno: updateData.refno },
+    // Delete existing detail records so we can insert fresh ones
+    await Br_powdtModel.destroy({
+      where: { refno: updateData.refno },
+      transaction: t
+    });
+
+    console.log("Deleted existing details, now inserting new products:",
+      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+
+    // Insert new detail records
+    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+      await Br_powdtModel.bulkCreate(updateData.productArrayData, {
         transaction: t
+      });
+
+      // Also update related stock card records
+      await Br_stockcard.update(
+        {
+          rdate: updateData.rdate,
+          trdate: updateData.trdate,
+          myear: updateData.myear,
+          monthh: updateData.monthh
+        },
+        {
+          where: { refno: updateData.refno },
+          transaction: t
+        }
+      );
+
+      // For each product in the update, update or create a stockcard entry
+      for (const item of updateData.productArrayData) {
+        const productCode = item.product_code;
+        const qty = parseFloat(item.qty) || 0;
+        const unitPrice = parseFloat(item.uprice) || 0;
+        const amt = parseFloat(item.amt) || 0;
+
+        // Find existing stock card record for this product in this order
+        const existingStockcard = await Br_stockcard.findOne({
+          where: {
+            refno: updateData.refno,
+            product_code: productCode
+          },
+          transaction: t
+        });
+
+        if (existingStockcard) {
+          // Update existing stock card
+          await Br_stockcard.update({
+            unit_code: item.unit_code,
+            out1: qty,
+            uprice: unitPrice,
+            out1_amt: amt,
+            rdate: updateData.rdate,
+            trdate: updateData.trdate,
+            myear: updateData.myear,
+            monthh: updateData.monthh
+          }, {
+            where: {
+              refno: updateData.refno,
+              product_code: productCode
+            },
+            transaction: t
+          });
+        } else {
+          // Get previous balances from other stock cards
+          const stockcardRecords = await Br_stockcard.findAll({
+            where: {
+              product_code: productCode,
+              branch_code: updateData.branch_code
+            },
+            order: [['rdate', 'DESC'], ['refno', 'DESC']],
+            raw: true,
+            transaction: t
+          });
+
+          // Calculate totals from existing records
+          const totals = stockcardRecords.reduce((acc, record) => ({
+            beg1: acc.beg1 + Number(record.beg1 || 0),
+            in1: acc.in1 + Number(record.in1 || 0),
+            out1: acc.out1 + Number(record.out1 || 0),
+            upd1: acc.upd1 + Number(record.upd1 || 0),
+            beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
+            in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
+            out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
+            upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
+          }), {
+            beg1: 0, in1: 0, out1: 0, upd1: 0,
+            beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
+          });
+
+          const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
+          const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
+
+          // Create new stock card entry for this product
+          await Br_stockcard.create({
+            myear: updateData.myear,
+            monthh: updateData.monthh,
+            product_code: productCode,
+            unit_code: item.unit_code,
+            refno: updateData.refno,
+            branch_code: updateData.branch_code,
+            rdate: updateData.rdate,
+            trdate: updateData.trdate,
+            lotno: 0,
+            beg1: 0,
+            in1: 0,
+            out1: qty,  // POW decreases stock
+            upd1: 0,
+            uprice: unitPrice,
+            beg1_amt: 0,
+            in1_amt: 0,
+            out1_amt: amt,
+            upd1_amt: 0,
+            balance: previousBalance - qty,  // Subtract for POW
+            balance_amount: previousBalanceAmount - amt
+          }, { transaction: t });
+        }
       }
-    );
+    }
 
     await t.commit();
     res.status(200).send({
@@ -516,5 +611,65 @@ exports.searchBr_powRunno = async (req, res) => {
   } catch (error) {
     console.error('Error:', error);
     res.status(500).send({ message: error.message });
+  }
+};
+
+exports.getPowByRefno = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // ดึงข้อมูลเฉพาะรายการที่ต้องการ
+    const orderData = await Br_powModel.findOne({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'supplier_code', 'branch_code', 'taxable', 'nontaxable',
+        'total', 'user_code', 'created_at'
+      ],
+      include: [
+        {
+          model: Tbl_supplier,
+          attributes: ['supplier_code', 'supplier_name'],
+          required: false
+        },
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
+      where: { refno: refno }
+    });
+
+    if (!orderData) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: orderData
+    });
+
+  } catch (error) {
+    console.error("Error in getPowByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };

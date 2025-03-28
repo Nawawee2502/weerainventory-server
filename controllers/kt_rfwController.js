@@ -113,35 +113,35 @@ exports.addKt_rfw = async (req, res) => {
           balance_amount: previousBalanceAmount + amount
         }, { transaction: t });
 
-        const product = await Tbl_product.findOne({
-          where: { product_code: item.product_code },
-          attributes: ['lotno'],
-          transaction: t
-        });
+        // const product = await Tbl_product.findOne({
+        //   where: { product_code: item.product_code },
+        //   attributes: ['lotno'],
+        //   transaction: t
+        // });
 
-        const newLotno = (product?.lotno || 0) + 1;
+        // const newLotno = (product?.lotno || 0) + 1;
 
-        await Kt_product_lotno.create({
-          product_code: item.product_code,
-          lotno: newLotno,
-          unit_code: item.unit_code,
-          qty: previousBalance + qty,
-          lotdate: headerData.rdate,
-          tlotdate: headerData.trdate,
-          refno: headerData.refno,
-          expdate: item.expire_date || null,
-          texpdate: item.texpire_date || null,
-          created_at: new Date(),
-          updated_at: new Date()
-        }, { transaction: t });
+        // await Kt_product_lotno.create({
+        //   product_code: item.product_code,
+        //   lotno: newLotno,
+        //   unit_code: item.unit_code,
+        //   qty: previousBalance + qty,
+        //   lotdate: headerData.rdate,
+        //   tlotdate: headerData.trdate,
+        //   refno: headerData.refno,
+        //   expdate: item.expire_date || null,
+        //   texpdate: item.texpire_date || null,
+        //   created_at: new Date(),
+        //   updated_at: new Date()
+        // }, { transaction: t });
 
-        await Tbl_product.update(
-          { lotno: newLotno },
-          {
-            where: { product_code: item.product_code },
-            transaction: t
-          }
-        );
+        // await Tbl_product.update(
+        //   { lotno: newLotno },
+        //   {
+        //     where: { product_code: item.product_code },
+        //     transaction: t
+        //   }
+        // );
       }
 
       await t.commit();
@@ -170,93 +170,65 @@ exports.updateKt_rfw = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    const { headerData, productArrayData, footerData } = req.body;
+    const updateData = req.body;
+    console.log("Received update data:", updateData);
 
-    if (!headerData || !headerData.refno) {
-      throw new Error('Missing required fields in header data');
-    }
+    // First update the header record
+    const updateResult = await Kt_rfwModel.update(
+      {
+        rdate: updateData.rdate,
+        trdate: updateData.trdate,
+        myear: updateData.myear,
+        monthh: updateData.monthh,
+        kitchen_code: updateData.kitchen_code,
+        taxable: updateData.taxable || 0,
+        nontaxable: updateData.nontaxable || 0,
+        total: updateData.total || 0,
+        user_code: updateData.user_code,
+      },
+      {
+        where: { refno: updateData.refno },
+        transaction: t
+      }
+    );
 
-    // Find existing detail records
-    const existingDetails = await Kt_rfwdtModel.findAll({
-      where: { refno: headerData.refno },
-      transaction: t
-    });
-
-    // Delete existing detail records
+    // Delete existing detail records so we can insert fresh ones
     await Kt_rfwdtModel.destroy({
-      where: { refno: headerData.refno },
+      where: { refno: updateData.refno },
       transaction: t
     });
 
-    // Update main record - note: no supplier_code field here
-    await Kt_rfwModel.update(
-      {
-        rdate: headerData.rdate,
-        trdate: headerData.trdate,
-        myear: headerData.myear,
-        monthh: headerData.monthh,
-        kitchen_code: headerData.kitchen_code,
-        taxable: footerData.taxable || 0,
-        nontaxable: footerData.nontaxable || 0,
-        total: footerData.total || 0,
-        user_code: headerData.user_code
-      },
-      {
-        where: { refno: headerData.refno },
-        transaction: t
-      }
-    );
+    console.log("Deleted existing details, now inserting new products:",
+      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
 
-    // Create new detail records
-    if (Array.isArray(productArrayData) && productArrayData.length > 0) {
-      await Kt_rfwdtModel.bulkCreate(
-        productArrayData.map(item => ({
-          refno: headerData.refno,
-          product_code: item.product_code,
-          qty: Number(item.qty),
-          unit_code: item.unit_code,
-          uprice: Number(item.uprice),
-          tax1: item.tax1 || 'N',
-          amt: Number(item.amt),
-          expire_date: item.expire_date || null,
-          texpire_date: item.texpire_date || null,
-          temperature1: item.temperature1 || null
-        })),
-        { transaction: t }
+    // Insert new detail records
+    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+      // Add a unique constraint check and potentially modify the data
+      const productsToInsert = updateData.productArrayData.map((item, index) => ({
+        ...item,
+        // Explicitly set the refno to ensure consistency
+        refno: updateData.refno,
+        // Optional: Add a unique index to prevent conflicts
+        uniqueIndex: `${updateData.refno}_${index}`
+      }));
+
+      // Use upsert instead of bulkCreate to handle potential conflicts
+      const insertPromises = productsToInsert.map(product =>
+        Kt_rfwdtModel.upsert(product, {
+          transaction: t,
+          // If you want to update existing records
+          conflictFields: ['refno', 'product_code']
+        })
       );
+
+      await Promise.all(insertPromises);
     }
-
-    // Update stockcard records
-    await Kt_stockcard.update(
-      {
-        rdate: headerData.rdate,
-        trdate: headerData.trdate,
-        myear: headerData.myear,
-        monthh: headerData.monthh,
-        kitchen_code: headerData.kitchen_code
-      },
-      {
-        where: { refno: headerData.refno },
-        transaction: t
-      }
-    );
-
-    // Update product lotno records if they exist
-    await Kt_product_lotno.update(
-      {
-        lotdate: headerData.rdate,
-        tlotdate: headerData.trdate
-      },
-      {
-        where: { refno: headerData.refno },
-        transaction: t
-      }
-    );
 
     await t.commit();
     res.status(200).send({
       result: true,
-      message: 'Updated successfully'
+      message: 'Updated successfully',
+      updatedRows: updateResult[0]
     });
 
   } catch (error) {
@@ -548,5 +520,84 @@ exports.searchKt_rfwRunno = async (req, res) => {
   } catch (error) {
     console.log(error);
     res.status(500).send({ message: error });
+  }
+};
+
+exports.getUsedRefnosKt_rfw = async (req, res) => {
+  try {
+    // Get all records from kt_rfw table
+    const usedReceipts = await Kt_rfwModel.findAll({
+      attributes: ['refno'],
+      raw: true
+    });
+
+    // Extract just the refno values into an array
+    const usedRefnos = usedReceipts.map(record => record.refno);
+
+    return res.status(200).json({
+      result: true,
+      data: usedRefnos
+    });
+  } catch (error) {
+    console.error("Error fetching used refnos:", error);
+    return res.status(500).json({
+      result: false,
+      message: error.message || "Server error"
+    });
+  }
+};
+
+exports.getKtRfwByRefno = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // Fetch the specific record by refno
+    const orderData = await Kt_rfwModel.findOne({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'kitchen_code', 'taxable', 'nontaxable',
+        'total', 'user_code', 'created_at'
+      ],
+      include: [
+        {
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
+      where: { refno: refno }
+    });
+
+    if (!orderData) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: orderData
+    });
+
+  } catch (error) {
+    console.error("Error in getRfwByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };

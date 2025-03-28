@@ -126,19 +126,9 @@ exports.updateKt_saf = async (req, res) => {
 
   try {
     const updateData = req.body;
+    console.log("Received update data:", updateData);
 
-    const detailRecords = await Kt_safdtModel.findAll({
-      where: { refno: updateData.refno },
-      transaction: t
-    });
-
-    const balance = detailRecords.reduce((sum, record) => sum + Number(record.qty || 0), 0); // Positive for adjustments
-    const balance_amount = detailRecords.reduce((sum, record) => {
-      const qty = Number(record.qty || 0);
-      const uprice = Number(record.uprice || 0);
-      return sum + (qty * uprice); // Positive for adjustments
-    }, 0);
-
+    // First update the header record
     const updateResult = await Kt_safModel.update(
       {
         rdate: updateData.rdate,
@@ -148,8 +138,6 @@ exports.updateKt_saf = async (req, res) => {
         kitchen_code: updateData.kitchen_code,
         total: updateData.total || 0,
         user_code: updateData.user_code,
-        balance: balance,
-        balance_amount: balance_amount
       },
       {
         where: { refno: updateData.refno },
@@ -157,18 +145,37 @@ exports.updateKt_saf = async (req, res) => {
       }
     );
 
-    await Kt_stockcard.update(
-      {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh
-      },
-      {
-        where: { refno: updateData.refno },
-        transaction: t
-      }
-    );
+    // Delete existing detail records so we can insert fresh ones
+    await Kt_safdtModel.destroy({
+      where: { refno: updateData.refno },
+      transaction: t
+    });
+
+    console.log("Deleted existing details, now inserting new products:",
+      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+
+    // Insert new detail records
+    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+      // Add a unique constraint check and potentially modify the data
+      const productsToInsert = updateData.productArrayData.map((item, index) => ({
+        ...item,
+        // Explicitly set the refno to ensure consistency
+        refno: updateData.refno,
+        // Optional: Add a unique index to prevent conflicts
+        uniqueIndex: `${updateData.refno}_${index}`
+      }));
+
+      // Use upsert instead of bulkCreate to handle potential conflicts
+      const insertPromises = productsToInsert.map(product =>
+        Kt_safdtModel.upsert(product, {
+          transaction: t,
+          // If you want to update existing records
+          conflictFields: ['refno', 'product_code']
+        })
+      );
+
+      await Promise.all(insertPromises);
+    }
 
     await t.commit();
     res.status(200).send({
@@ -269,7 +276,7 @@ exports.Kt_safAlljoindt = async (req, res) => {
   try {
     const { offset, limit, rdate, rdate1, rdate2, kitchen_code, product_code } = req.body;
     const { refno } = req.body;
-    
+
     let whereClause = {};
 
     // If refno is provided, use that as the primary filter
@@ -485,5 +492,64 @@ exports.searchKt_safRunno = async (req, res) => {
   } catch (error) {
     console.error('Error:', error);
     res.status(500).send({ message: error.message });
+  }
+};
+
+exports.getKtSafByRefno = async (req, res) => {
+  try {
+    // ดึง refno จาก request และตรวจสอบให้แน่ใจว่าเป็น string
+    let refnoValue = req.body.refno;
+
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+    }
+
+    if (!refnoValue) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // ใช้ค่า refnoValue ในการหาข้อมูล
+    const orderData = await Kt_safModel.findOne({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'kitchen_code', 'total', 'user_code', 'created_at'
+      ],
+      include: [
+        {
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
+      where: { refno: refnoValue }
+    });
+
+    if (!orderData) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: orderData
+    });
+
+  } catch (error) {
+    console.error("Error in getKtSafByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };

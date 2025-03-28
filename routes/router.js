@@ -96,7 +96,8 @@ const {
   refno,
   searchWh_posRunno,
   Wh_posByRefno,
-  countWh_pos
+  countWh_pos,
+  getWhPosByRefno
 } = require("../controllers/wh_posController")
 
 const {
@@ -117,7 +118,8 @@ const {
   Wh_rfsrefno,
   searchWh_rfsRunno,
   Wh_rfsByRefno,
-  countWh_rfs
+  countWh_rfs,
+  getWhRfsByRefno
 } = require("../controllers/wh_rfsController")
 
 const {
@@ -137,7 +139,8 @@ const {
   Wh_dpkAllrdate,
   Wh_dpkrefno,
   searchWh_dpkRunno,
-  Wh_dpkByRefno
+  Wh_dpkByRefno,
+  getWhDpkByRefno
 } = require("../controllers/wh_dpkController")
 
 const {
@@ -157,7 +160,8 @@ const {
   Wh_rfkAllrdate,
   Wh_rfkrefno,
   searchWh_rfkRunno,
-  Wh_rfkByRefno
+  Wh_rfkByRefno,
+  getWhRfkByRefno
 } = require("../controllers/wh_rfkController")
 
 const {
@@ -178,7 +182,8 @@ const {
   Wh_dpbrefno,
   searchWh_dpbRunno,
   Wh_dpbByRefno,
-  countWh_dpb
+  countWh_dpb,
+  getWhDpbByRefno
 } = require("../controllers/wh_dpbController")
 
 const {
@@ -198,7 +203,8 @@ const {
   Wh_safAllrdate,
   Wh_safrefno,
   searchWh_safRunno,
-  Wh_safByRefno
+  Wh_safByRefno,
+  getWhSafByRefno
 } = require("../controllers/wh_safController")
 
 const {
@@ -235,7 +241,8 @@ const {
   Kt_powrefno,
   searchKt_powRunno,
   Kt_powByRefno,
-  countKt_pow
+  countKt_pow,
+  getKtPowByRefno
 } = require("../controllers/kt_powController")
 
 const {
@@ -256,7 +263,8 @@ const {
   Kt_rfsrefno,
   searchKt_rfsRunno,
   Kt_rfsByRefno,
-  countKt_rfs
+  countKt_rfs,
+  getKtRfsByRefno
 } = require("../controllers/kt_rfsController")
 
 const {
@@ -277,7 +285,9 @@ const {
   Kt_rfwrefno,
   searchKt_rfwRunno,
   Kt_rfwByRefno,
-  countKt_rfw
+  countKt_rfw,
+  getUsedRefnosKt_rfw,
+  getKtRfwByRefno
 } = require("../controllers/kt_rfwController")
 
 const {
@@ -297,7 +307,8 @@ const {
   Kt_grfAllrdate,
   Kt_grfrefno,
   searchKt_grfRunno,
-  Kt_grfByRefno
+  Kt_grfByRefno,
+  getKtGrfByRefno
 } = require("../controllers/kt_grfController")
 
 const {
@@ -317,7 +328,8 @@ const {
   Kt_prfAllrdate,
   Kt_prfrefno,
   searchKt_prfRunno,
-  Kt_prfByRefno
+  Kt_prfByRefno,
+  getKtPrfByRefno
 } = require("../controllers/kt_prfController")
 
 const {
@@ -337,7 +349,8 @@ const {
   Kt_trwAllrdate,
   Kt_trwrefno,
   searchKt_trwRunno,
-  Kt_trwByRefno
+  Kt_trwByRefno,
+  getKtTrwByRefno
 } = require("../controllers/kt_trwController")
 
 const {
@@ -357,7 +370,8 @@ const {
   Kt_dpbAllrdate,
   Kt_dpbrefno,
   searchKt_dpbRunno,
-  Kt_dpbByRefno
+  Kt_dpbByRefno,
+  getKtDpbByRefno
 } = require("../controllers/kt_dpbController")
 
 const {
@@ -378,7 +392,8 @@ const {
   Kt_safrefno,
   searchKt_safRunno,
   Kt_safByRefno,
-  countKt_saf
+  countKt_saf,
+  getKtSafByRefno
 } = require("../controllers/kt_safController")
 
 const {
@@ -418,6 +433,7 @@ const {
   Br_safrefno,
   searchBr_safRunno,
   Br_safByRefno,
+  getSafByRefno
 } = require("../controllers/br_safController")
 
 const {
@@ -437,7 +453,8 @@ const {
   Br_powAllrdate,
   Br_powrefno,
   searchBr_powRunno,
-  Br_powByRefno
+  Br_powByRefno,
+  getPowByRefno
 } = require("../controllers/br_powController")
 
 const {
@@ -458,7 +475,8 @@ const {
   Br_rfwrefno,
   searchBr_rfwRunno,
   Br_rfwByRefno,
-  getUsedRefnosrfw
+  getUsedRefnosrfw,
+  getRfwByRefno
 } = require("../controllers/br_rfwController")
 
 const {
@@ -479,7 +497,8 @@ const {
   Br_rfkrefno,
   searchBr_rfkRunno,
   Br_rfkByRefno,
-  getUsedRefnos
+  getUsedRefnos,
+  getRfkByRefno
 } = require("../controllers/br_rfkController")
 
 const {
@@ -499,7 +518,8 @@ const {
   Br_rfsAllrdate,
   Br_rfsrefno,
   searchBr_rfsRunno,
-  Br_rfsByRefno
+  Br_rfsByRefno,
+  getRfsByRefno
 } = require("../controllers/br_rfsController")
 
 const {
@@ -520,7 +540,8 @@ const {
   Br_rtkrefno,
   searchBr_rtkRunno,
   Br_rtkByRefno,
-  countBr_rtk
+  countBr_rtk,
+  getRtkByRefno
 } = require("../controllers/br_rtkController")
 
 const {
@@ -540,7 +561,8 @@ const {
   Br_grfAllrdate,
   Br_grfrefno,
   searchBr_grfRunno,
-  Br_grfByRefno
+  Br_grfByRefno,
+  getGrfByRefno
 } = require("../controllers/br_grfController")
 
 const {
@@ -667,6 +689,8 @@ router.post("/Wh_posAllrdate", Wh_posAllrdate);
 router.post("/refno", refno);
 router.post("/wh_posbyrefno", Wh_posByRefno);
 router.post("/countwh_pos", countWh_pos);
+router.post("/getWhPosByRefno", getWhPosByRefno);
+
 
 
 router.post("/addWh_posdt", addWh_posdt);
@@ -686,6 +710,8 @@ router.post("/Wh_rfsrefno", Wh_rfsrefno);
 router.post("/wh_rfsbyrefno", Wh_rfsByRefno);
 router.post("/searchWh_rfsRunno", searchWh_rfsRunno);
 router.post("/countWh_rfs", countWh_rfs);
+router.post("/getWhRfsByRefno", getWhRfsByRefno);
+
 
 router.post("/addWh_rfsdt", addWh_rfsdt);
 router.post("/updatewh_rfsdt", updateWh_rfsdt);
@@ -701,7 +727,9 @@ router.post("/wh_dpkAlljoindt", Wh_dpkAlljoindt);
 router.post("/Wh_dpkAllrdate", Wh_dpkAllrdate);
 router.post("/Wh_dpkrefno", Wh_dpkrefno);
 router.post("/wh_dpkbyrefno", Wh_dpkByRefno);
-router.post("/searchWh_dpkRunno", searchWh_dpkRunno)
+router.post("/searchWh_dpkRunno", searchWh_dpkRunno);
+router.post("/getWhDpkByRefno", getWhDpkByRefno);
+
 
 router.post("/addWh_dpkdt", addWh_dpkdt);
 router.post("/updatewh_dpkdt", updateWh_dpkdt);
@@ -717,7 +745,9 @@ router.post("/wh_rfkAlljoindt", Wh_rfkAlljoindt);
 router.post("/Wh_rfkAllrdate", Wh_rfkAllrdate);
 router.post("/Wh_rfkrefno", Wh_rfkrefno);
 router.post("/wh_rfkbyrefno", Wh_rfkByRefno);
-router.post("/searchWh_rfkRunno", searchWh_rfkRunno)
+router.post("/searchWh_rfkRunno", searchWh_rfkRunno);
+router.post("/getWhRfkByRefno", getWhRfkByRefno);
+
 
 router.post("/addWh_rfkdt", addWh_rfkdt);
 router.post("/updatewh_rfkdt", updateWh_rfkdt);
@@ -735,6 +765,8 @@ router.post("/Wh_dpbrefno", Wh_dpbrefno);
 router.post("/wh_dpbbyrefno", Wh_dpbByRefno);
 router.post("/searchWh_dpbRunno", searchWh_dpbRunno);
 router.post("/countWh_dpb", countWh_dpb);
+router.post("/getWhDpbByRefno", getWhDpbByRefno);
+
 
 router.post("/addWh_dpbdt", addWh_dpbdt);
 router.post("/updatewh_dpbdt", updateWh_dpbdt);
@@ -750,7 +782,9 @@ router.post("/wh_safAlljoindt", Wh_safAlljoindt);
 router.post("/Wh_safAllrdate", Wh_safAllrdate);
 router.post("/Wh_safrefno", Wh_safrefno);
 router.post("/wh_safbyrefno", Wh_safByRefno);
-router.post("/searchWh_safRunno", searchWh_safRunno)
+router.post("/searchWh_safRunno", searchWh_safRunno);
+router.post("/getWhSafByRefno", getWhSafByRefno);
+
 
 router.post("/addWh_safdt", addWh_safdt);
 router.post("/updatewh_safdt", updateWh_safdt);
@@ -780,6 +814,8 @@ router.post("/Kt_powrefno", Kt_powrefno);
 router.post("/Kt_powbyrefno", Kt_powByRefno);
 router.post("/searchKt_powRunno", searchKt_powRunno);
 router.post("/countkt_pow", countKt_pow);
+router.post("/getKtPowByRefno", getKtPowByRefno);
+
 
 router.post("/addkt_powdt", addKt_powdt);
 router.post("/updateKt_powdt", updateKt_powdt);
@@ -797,6 +833,8 @@ router.post("/Kt_rfsrefno", Kt_rfsrefno);
 router.post("/Kt_rfsbyrefno", Kt_rfsByRefno);
 router.post("/searchKt_rfsRunno", searchKt_rfsRunno);
 router.post("/countKt_rfs", countKt_rfs);
+router.post("/getKtRfsByRefno", getKtRfsByRefno);
+
 
 router.post("/addkt_rfsdt", addKt_rfsdt);
 router.post("/updateKt_rfsdt", updateKt_rfsdt);
@@ -814,6 +852,9 @@ router.post("/Kt_rfwrefno", Kt_rfwrefno);
 router.post("/Kt_rfwbyrefno", Kt_rfwByRefno);
 router.post("/searchKt_rfwRunno", searchKt_rfwRunno);
 router.post("/countKt_rfw", countKt_rfw);
+router.post('/kt-rfw-used-refnos', getUsedRefnosKt_rfw);
+router.post("/getKtRfwByRefno", getKtRfwByRefno);
+
 
 router.post("/addkt_rfwdt", addKt_rfwdt);
 router.post("/updateKt_rfwdt", updateKt_rfwdt);
@@ -829,7 +870,9 @@ router.post("/Kt_grfAlljoindt", Kt_grfAlljoindt);
 router.post("/Kt_grfAllrdate", Kt_grfAllrdate);
 router.post("/Kt_grfrefno", Kt_grfrefno);
 router.post("/Kt_grfbyrefno", Kt_grfByRefno);
-router.post("/searchKt_grfRunno", searchKt_grfRunno)
+router.post("/searchKt_grfRunno", searchKt_grfRunno);
+router.post("/getKtGrfByRefno", getKtGrfByRefno);
+
 
 router.post("/addkt_grfdt", addKt_grfdt);
 router.post("/updateKt_grfdt", updateKt_grfdt);
@@ -845,7 +888,9 @@ router.post("/Kt_prfAlljoindt", Kt_prfAlljoindt);
 router.post("/Kt_prfAllrdate", Kt_prfAllrdate);
 router.post("/Kt_prfrefno", Kt_prfrefno);
 router.post("/Kt_prfbyrefno", Kt_prfByRefno);
-router.post("/searchKt_prfRunno", searchKt_prfRunno)
+router.post("/searchKt_prfRunno", searchKt_prfRunno);
+router.post("/getKtPrfByRefno", getKtPrfByRefno);
+
 
 router.post("/addkt_prfdt", addKt_prfdt);
 router.post("/updateKt_prfdt", updateKt_prfdt);
@@ -861,7 +906,9 @@ router.post("/Kt_trwAlljoindt", Kt_trwAlljoindt);
 router.post("/Kt_trwAllrdate", Kt_trwAllrdate);
 router.post("/Kt_trwrefno", Kt_trwrefno);
 router.post("/Kt_trwbyrefno", Kt_trwByRefno);
-router.post("/searchKt_trwRunno", searchKt_trwRunno)
+router.post("/searchKt_trwRunno", searchKt_trwRunno);
+router.post("/getKtTrwByRefno", getKtTrwByRefno);
+
 
 router.post("/addkt_trwdt", addKt_trwdt);
 router.post("/updateKt_trwdt", updateKt_trwdt);
@@ -877,7 +924,9 @@ router.post("/Kt_dpbAlljoindt", Kt_dpbAlljoindt);
 router.post("/Kt_dpbAllrdate", Kt_dpbAllrdate);
 router.post("/Kt_dpbrefno", Kt_dpbrefno);
 router.post("/Kt_dpbbyrefno", Kt_dpbByRefno);
-router.post("/searchKt_dpbRunno", searchKt_dpbRunno)
+router.post("/searchKt_dpbRunno", searchKt_dpbRunno);
+router.post("/getKtDpbByRefno", getKtDpbByRefno);
+
 
 router.post("/addkt_dpbdt", addKt_dpbdt);
 router.post("/updateKt_dpbdt", updateKt_dpbdt);
@@ -902,6 +951,8 @@ router.post("/updateKt_safdt", updateKt_safdt);
 router.post("/deleteKt_safdt", deleteKt_safdt);
 router.post("/countKt_safdt", countKt_safdt);
 router.post("/Kt_safdtAlljoindt", Kt_safdtAlljoindt);
+router.post("/getKtSafByRefno", getKtSafByRefno);
+
 
 router.post("/addKt_stockcard", addKt_stockcard);
 router.post("/updateKt_stockcard", updateKt_stockcard);
@@ -925,7 +976,8 @@ router.post("/Br_safAlljoindt", Br_safAlljoindt);
 router.post("/Br_safAllrdate", Br_safAllrdate);
 router.post("/Br_safrefno", Br_safrefno);
 router.post("/Br_safbyrefno", Br_safByRefno);
-router.post("/searchBr_safRunno", searchBr_safRunno)
+router.post("/searchBr_safRunno", searchBr_safRunno);
+router.post("/getSafByRefno", getSafByRefno);
 
 router.post("/addBr_safdt", addBr_safdt);
 router.post("/updateBr_safdt", updateBr_safdt);
@@ -942,6 +994,8 @@ router.post("/Br_powAllrdate", Br_powAllrdate);
 router.post("/Br_powrefno", Br_powrefno);
 router.post("/Br_powbyrefno", Br_powByRefno);
 router.post("/searchBr_powRunno", searchBr_powRunno)
+router.post("/getPowByRefno", getPowByRefno);
+
 
 router.post("/addBr_powdt", addBr_powdt);
 router.post("/updateBr_powdt", updateBr_powdt);
@@ -957,7 +1011,8 @@ router.post("/Br_rfwAlljoindt", Br_rfwAlljoindt);
 router.post("/Br_rfwAllrdate", Br_rfwAllrdate);
 router.post("/Br_rfwrefno", Br_rfwrefno);
 router.post("/Br_rfwbyrefno", Br_rfwByRefno);
-router.post("/searchBr_rfwRunno", searchBr_rfwRunno)
+router.post("/searchBr_rfwRunno", searchBr_rfwRunno);
+router.post("/getRfwByRefno", getRfwByRefno);
 
 router.post("/addBr_rfwdt", addBr_rfwdt);
 router.post("/updateBr_rfwdt", updateBr_rfwdt);
@@ -974,7 +1029,8 @@ router.post("/Br_rfkAlljoindt", Br_rfkAlljoindt);
 router.post("/Br_rfkAllrdate", Br_rfkAllrdate);
 router.post("/Br_rfkrefno", Br_rfkrefno);
 router.post("/Br_rfkbyrefno", Br_rfkByRefno);
-router.post("/searchBr_rfkRunno", searchBr_rfkRunno)
+router.post("/searchBr_rfkRunno", searchBr_rfkRunno);
+router.post("/getRfkByRefno", getRfkByRefno);
 
 router.post("/addBr_rfkdt", addBr_rfkdt);
 router.post("/updateBr_rfkdt", updateBr_rfkdt);
@@ -991,7 +1047,8 @@ router.post("/Br_rfsAlljoindt", Br_rfsAlljoindt);
 router.post("/Br_rfsAllrdate", Br_rfsAllrdate);
 router.post("/Br_rfsrefno", Br_rfsrefno);
 router.post("/Br_rfsbyrefno", Br_rfsByRefno);
-router.post("/searchBr_rfsRunno", searchBr_rfsRunno)
+router.post("/searchBr_rfsRunno", searchBr_rfsRunno);
+router.post("/getRfsByRefno", getRfsByRefno);
 
 router.post("/addBr_rfsdt", addBr_rfsdt);
 router.post("/updateBr_rfsdt", updateBr_rfsdt);
@@ -1008,6 +1065,7 @@ router.post("/Br_rtkrefno", Br_rtkrefno);
 router.post("/Br_rtkbyrefno", Br_rtkByRefno);
 router.post("/searchBr_rtkRunno", searchBr_rtkRunno);
 router.post("/countBr_rtk", countBr_rtk);
+router.post("/getRtkByRefno", getRtkByRefno);
 
 router.post("/addBr_rtkdt", addBr_rtkdt);
 router.post("/updateBr_rtkdt", updateBr_rtkdt);
@@ -1024,7 +1082,8 @@ router.post("/Br_grfAlljoindt", Br_grfAlljoindt);
 router.post("/Br_grfAllrdate", Br_grfAllrdate);
 router.post("/Br_grfrefno", Br_grfrefno);
 router.post("/Br_grfbyrefno", Br_grfByRefno);
-router.post("/searchBr_grfRunno", searchBr_grfRunno)
+router.post("/searchBr_grfRunno", searchBr_grfRunno);
+router.post("/getGrfByRefno", getGrfByRefno);
 
 router.post("/addBr_grfdt", addBr_grfdt);
 router.post("/updateBr_grfdt", updateBr_grfdt);

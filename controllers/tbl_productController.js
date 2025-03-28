@@ -113,7 +113,7 @@ exports.searchProductsForImage = async (req, res) => {
       }],
       offset: parseInt(offset),
       limit: parseInt(limit),
-      order: [['product_code', 'ASC']]
+      order: [['product_name', 'ASC']] // เรียงตามชื่อสินค้า A-Z
     });
 
     const total = await tbl_productModel.count({ where: whereClause });
@@ -214,7 +214,11 @@ exports.deleteproduct = async (req, res) => {
 exports.productAll = async (req, res) => {
   try {
     const { offset, limit } = req.body;
-    const productShow = await tbl_productModel.findAll({ offset: offset, limit: limit });
+    const productShow = await tbl_productModel.findAll({ 
+      offset: offset, 
+      limit: limit,
+      order: [['product_name', 'ASC']] // เรียงตามชื่อสินค้า A-Z
+    });
     res.status(200).send({ result: true, data: productShow })
   } catch (error) {
     console.log(error)
@@ -247,18 +251,18 @@ exports.productAlltypeproduct = async (req, res) => {
           required: false,
         },
         {
-          model: tbl_UnitModel,  // Changed from tbl_unit to tbl_UnitModel
+          model: tbl_UnitModel,
           as: 'productUnit1',
           required: false,
         },
         {
-          model: tbl_UnitModel,  // Changed from tbl_unit to tbl_UnitModel
+          model: tbl_UnitModel,
           as: 'productUnit2',
           required: false,
         },
       ],
       where: whereClause,
-      order: [['product_code', 'ASC']]
+      order: [['product_name', 'ASC']] // เรียงตามชื่อสินค้า A-Z
     });
 
     res.status(200).send({ result: true, data: productShow })
@@ -273,7 +277,6 @@ exports.SearchProductCode = async (req, res) => {
     const { product_code } = req.body;
     const { Op } = require("sequelize");
 
-
     // Post.find({ where: { ...}, include: [User]})
     const productShow = await tbl_productModel.findAll({
       include: [
@@ -282,12 +285,12 @@ exports.SearchProductCode = async (req, res) => {
           required: true,
         },
         {
-          model: tbl_unit,
+          model: tbl_UnitModel,
           as: 'productUnit1',
           required: true,
         },
         {
-          model: tbl_unit,
+          model: tbl_UnitModel,
           as: 'productUnit2',
           required: true,
         },
@@ -378,12 +381,12 @@ exports.searchProductName = async (req, res) => {
           required: true,
         },
         {
-          model: tbl_UnitModel,  // เปลี่ยนจาก tbl_unit เป็น tbl_UnitModel
+          model: tbl_UnitModel,
           as: 'productUnit1',
           required: true,
         },
         {
-          model: tbl_UnitModel,  // เปลี่ยนจาก tbl_unit เป็น tbl_UnitModel
+          model: tbl_UnitModel,
           as: 'productUnit2',
           required: true,
         },
@@ -392,7 +395,8 @@ exports.searchProductName = async (req, res) => {
         product_name: {
           [Op.like]: `%${product_name}%`
         },
-      }
+      },
+      order: [['product_name', 'ASC']] // เรียงตามชื่อสินค้า A-Z
     });
     res.status(200).send({ result: true, data: productShow });
 
@@ -402,7 +406,6 @@ exports.searchProductName = async (req, res) => {
   }
 };
 
-// 3. แก้ไขฟังก์ชัน searchproduct ด้วย
 exports.searchproduct = async (req, res) => {
   try {
     const { product_name, typeproduct_code } = req.body;
@@ -426,18 +429,18 @@ exports.searchproduct = async (req, res) => {
           required: true,
         },
         {
-          model: tbl_UnitModel,  // เปลี่ยนจาก tbl_unit เป็น tbl_UnitModel
+          model: tbl_UnitModel,
           as: 'productUnit1',
           required: true,
         },
         {
-          model: tbl_UnitModel,  // เปลี่ยนจาก tbl_unit เป็น tbl_UnitModel
+          model: tbl_UnitModel,
           as: 'productUnit2',
           required: true,
         },
       ],
       where: whereClause,
-      order: [['product_code', 'ASC']]
+      order: [['product_name', 'ASC']] // เรียงตามชื่อสินค้า A-Z
     });
 
     res.status(200).send({ result: true, data: productShow });

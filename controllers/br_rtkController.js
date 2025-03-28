@@ -133,19 +133,9 @@ exports.updateBr_rtk = async (req, res) => {
 
     try {
         const updateData = req.body;
+        console.log("Received update data:", updateData);
 
-        const detailRecords = await Br_rtkdtModel.findAll({
-            where: { refno: updateData.refno },
-            transaction: t
-        });
-
-        const balance = detailRecords.reduce((sum, record) => sum - Number(record.qty || 0), 0); // Negative for RTK
-        const balance_amount = detailRecords.reduce((sum, record) => {
-            const qty = Number(record.qty || 0);
-            const uprice = Number(record.uprice || 0);
-            return sum - (qty * uprice); // Negative for RTK
-        }, 0);
-
+        // First update the header record
         const updateResult = await Br_rtkModel.update(
             {
                 rdate: updateData.rdate,
@@ -158,8 +148,6 @@ exports.updateBr_rtk = async (req, res) => {
                 nontaxable: updateData.nontaxable || 0,
                 total: updateData.total || 0,
                 user_code: updateData.user_code,
-                balance: balance,
-                balance_amount: balance_amount
             },
             {
                 where: { refno: updateData.refno },
@@ -167,18 +155,37 @@ exports.updateBr_rtk = async (req, res) => {
             }
         );
 
-        await Br_stockcard.update(
-            {
-                rdate: updateData.rdate,
-                trdate: updateData.trdate,
-                myear: updateData.myear,
-                monthh: updateData.monthh
-            },
-            {
-                where: { refno: updateData.refno },
-                transaction: t
-            }
-        );
+        // Delete existing detail records so we can insert fresh ones
+        await Br_rtkdtModel.destroy({
+            where: { refno: updateData.refno },
+            transaction: t
+        });
+
+        console.log("Deleted existing details, now inserting new products:",
+            updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+
+        // Insert new detail records
+        if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+            // Add a unique constraint check and potentially modify the data
+            const productsToInsert = updateData.productArrayData.map((item, index) => ({
+                ...item,
+                // Explicitly set the refno to ensure consistency
+                refno: updateData.refno,
+                // Optional: Add a unique index to prevent conflicts
+                uniqueIndex: `${updateData.refno}_${index}`
+            }));
+
+            // Use upsert instead of bulkCreate to handle potential conflicts
+            const insertPromises = productsToInsert.map(product =>
+                Br_rtkdtModel.upsert(product, {
+                    transaction: t,
+                    // If you want to update existing records
+                    conflictFields: ['refno', 'product_code']
+                })
+            );
+
+            await Promise.all(insertPromises);
+        }
 
         await t.commit();
         res.status(200).send({
@@ -516,5 +523,66 @@ exports.searchBr_rtkRunno = async (req, res) => {
     } catch (error) {
         console.error('Error:', error);
         res.status(500).send({ message: error.message });
+    }
+};
+
+// br_rtkController.js
+exports.getRtkByRefno = async (req, res) => {
+    try {
+        const { refno } = req.body;
+
+        if (!refno) {
+            return res.status(400).send({
+                result: false,
+                message: 'Reference number is required'
+            });
+        }
+
+        // ดึงข้อมูลเฉพาะรายการที่ต้องการ
+        const orderData = await Br_rtkModel.findOne({
+            attributes: [
+                'refno', 'rdate', 'trdate', 'myear', 'monthh',
+                'kitchen_code', 'branch_code', 'taxable', 'nontaxable',
+                'total', 'user_code', 'created_at'
+            ],
+            include: [
+                {
+                    model: Tbl_kitchen,
+                    attributes: ['kitchen_code', 'kitchen_name'],
+                    required: false
+                },
+                {
+                    model: Tbl_branch,
+                    attributes: ['branch_code', 'branch_name'],
+                    required: false
+                },
+                {
+                    model: User,
+                    as: 'user',
+                    attributes: ['user_code', 'username'],
+                    required: false
+                }
+            ],
+            where: { refno: refno }
+        });
+
+        if (!orderData) {
+            return res.status(404).send({
+                result: false,
+                message: 'Order not found'
+            });
+        }
+
+        res.status(200).send({
+            result: true,
+            data: orderData
+        });
+
+    } catch (error) {
+        console.error("Error in getRtkByRefno:", error);
+        res.status(500).send({
+            result: false,
+            message: error.message
+        });
     }
 };

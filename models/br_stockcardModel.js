@@ -56,6 +56,14 @@ module.exports = (sequelize, DataTypes) => {
             upd1_amt: {
                 type: DataTypes.DOUBLE(12, 2),
             },
+            balance: {
+                type: DataTypes.DOUBLE(12, 2),
+                defaultValue: 0.00
+            },
+            balance_amount: {
+                type: DataTypes.DOUBLE(12, 2),
+                defaultValue: 0.00
+            }
 
         },
         {

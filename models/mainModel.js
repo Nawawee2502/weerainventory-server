@@ -703,6 +703,8 @@ db.Tbl_product.hasMany(db.Kt_rfsdt, {
   sourceKey: 'product_code'
 });
 
+
+
 // Add user association for kt_rfw
 db.Kt_rfw.belongsTo(db.User, {
   foreignKey: 'user_code',
@@ -980,6 +982,21 @@ db.User.hasMany(db.Kt_trw, {
   foreignKey: 'user_code',
   sourceKey: 'user_code',
   as: 'kt_trw'
+});
+
+db.Kt_trwdt.belongsTo(db.Tbl_product, {
+  foreignKey: 'product_code',
+  targetKey: 'product_code',
+  include: [
+    {
+      model: db.Tbl_unit,
+      as: 'productUnit1'
+    },
+    {
+      model: db.Tbl_unit,
+      as: 'productUnit2'
+    }
+  ]
 });
 
 // ใบส่งสินค้าให้ Branch

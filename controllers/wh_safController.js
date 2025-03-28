@@ -39,24 +39,75 @@ exports.addWh_saf = async (req, res) => {
 };
 
 exports.updateWh_saf = async (req, res) => {
-  try {
-    Wh_safModel.update(
-      {
-        rdate: req.body.rdate, //19/10/2024
-        trdate: req.body.trdate, //20241019
-        myear: req.body.myear, // 2024
-        monthh: req.body.monthh, //10
-        total: req.body.total,
-        user_code: req.body.user_code
-      },
-      { where: { refno: req.body.refno } }
-    );
-    res.status(200).send({ result: true })
-  } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
-  }
+  const t = await sequelize.transaction();
 
+  try {
+    const updateData = req.body;
+    console.log("Received update data:", updateData);
+
+    // First update the header record
+    const updateResult = await Wh_safModel.update(
+      {
+        rdate: updateData.rdate,
+        trdate: updateData.trdate,
+        myear: updateData.myear,
+        monthh: updateData.monthh,
+        total: updateData.total || 0,
+        user_code: updateData.user_code,
+      },
+      {
+        where: { refno: updateData.refno },
+        transaction: t
+      }
+    );
+
+    // Delete existing detail records so we can insert fresh ones
+    await Wh_safdtModel.destroy({
+      where: { refno: updateData.refno },
+      transaction: t
+    });
+
+    console.log("Deleted existing details, now inserting new products:",
+      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+
+    // Insert new detail records
+    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+      // Add a unique constraint check and potentially modify the data
+      const productsToInsert = updateData.productArrayData.map((item, index) => ({
+        ...item,
+        // Explicitly set the refno to ensure consistency
+        refno: updateData.refno,
+        // Optional: Add a unique index to prevent conflicts
+        uniqueIndex: `${updateData.refno}_${index}`
+      }));
+
+      // Use upsert instead of bulkCreate to handle potential conflicts
+      const insertPromises = productsToInsert.map(product =>
+        Wh_safdtModel.upsert(product, {
+          transaction: t,
+          // If you want to update existing records
+          conflictFields: ['refno', 'product_code']
+        })
+      );
+
+      await Promise.all(insertPromises);
+    }
+
+    await t.commit();
+    res.status(200).send({
+      result: true,
+      message: 'Updated successfully',
+      updatedRows: updateResult[0]
+    });
+
+  } catch (error) {
+    await t.rollback();
+    console.error('Update Error:', error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
+  }
 };
 
 
@@ -229,5 +280,54 @@ exports.searchWh_safRunno = async (req, res) => {
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
+  }
+};
+
+exports.getWhSafByRefno = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // Fetch the specific record by refno
+    const orderData = await Wh_safModel.findOne({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'total', 'user_code', 'created_at'
+      ],
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
+      where: { refno: refno }
+    });
+
+    if (!orderData) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: orderData
+    });
+
+  } catch (error) {
+    console.error("Error in getSafByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };

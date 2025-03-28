@@ -147,68 +147,87 @@ exports.updateWh_dpb = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    const { headerData, productArrayData, footerData } = req.body;
+    const updateData = req.body;
+    console.log("Received update data:", updateData);
 
-    if (!headerData || !headerData.refno) {
-      throw new Error('Missing refno in header data');
-    }
-
-    // Update header
-    await wh_dpbModel.update(
+    // First update the header record
+    const updateResult = await wh_dpbModel.update(
       {
-        rdate: headerData.rdate,
-        trdate: headerData.trdate,
-        myear: headerData.myear,
-        monthh: headerData.monthh,
-        branch_code: headerData.branch_code,
-        taxable: headerData.taxable || 0,
-        nontaxable: headerData.nontaxable || 0,
-        total: footerData.total || 0,
-        user_code: headerData.user_code
+        rdate: updateData.rdate,
+        trdate: updateData.trdate,
+        myear: updateData.myear,
+        monthh: updateData.monthh,
+        branch_code: updateData.branch_code,
+        taxable: updateData.taxable || 0,
+        nontaxable: updateData.nontaxable || 0,
+        total: updateData.total || 0,
+        user_code: updateData.user_code,
       },
       {
-        where: { refno: headerData.refno },
+        where: { refno: updateData.refno },
         transaction: t
       }
     );
 
-    // Delete old detail records
+    // Delete existing detail records so we can insert fresh ones
     await wh_dpbdtModel.destroy({
-      where: { refno: headerData.refno },
+      where: { refno: updateData.refno },
       transaction: t
     });
 
-    // Add new detail records
-    if (Array.isArray(productArrayData) && productArrayData.length > 0) {
-      await wh_dpbdtModel.bulkCreate(productArrayData, { transaction: t });
+    console.log("Deleted existing details, now inserting new products:",
+      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+
+    // Insert new detail records
+    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+      // Add a unique constraint check and potentially modify the data
+      const productsToInsert = updateData.productArrayData.map((item, index) => ({
+        ...item,
+        // Explicitly set the refno to ensure consistency
+        refno: updateData.refno,
+        // Optional: Add a unique index to prevent conflicts
+        uniqueIndex: `${updateData.refno}_${index}`
+      }));
+
+      // Use upsert instead of bulkCreate to handle potential conflicts
+      const insertPromises = productsToInsert.map(product =>
+        wh_dpbdtModel.upsert(product, {
+          transaction: t,
+          // If you want to update existing records
+          conflictFields: ['refno', 'product_code']
+        })
+      );
+
+      await Promise.all(insertPromises);
     }
 
     // Update stockcard if needed
     await Wh_stockcard.update(
       {
-        rdate: headerData.rdate,
-        trdate: headerData.trdate,
-        myear: headerData.myear,
-        monthh: headerData.monthh
+        rdate: updateData.rdate,
+        trdate: updateData.trdate,
+        myear: updateData.myear,
+        monthh: updateData.monthh
       },
       {
-        where: { refno: headerData.refno },
+        where: { refno: updateData.refno },
         transaction: t
       }
     );
 
     await t.commit();
-    res.status(200).json({
+    res.status(200).send({
       result: true,
-      message: 'Updated successfully'
+      message: 'Updated successfully',
+      updatedRows: updateResult[0]
     });
 
   } catch (error) {
     await t.rollback();
     console.error('Update Error:', error);
-    res.status(500).json({
+    res.status(500).send({
       result: false,
-      message: error.message || 'Failed to update dispatch'
+      message: error.message
     });
   }
 };
@@ -454,14 +473,14 @@ exports.searchWh_dpbrefno = async (req, res) => {
 exports.Wh_dpbrefno = async (req, res) => {
   try {
     const { month, year } = req.body;
-    
+
     if (!month || !year) {
-      return res.status(400).send({ 
-        result: false, 
-        message: "Month and year parameters are required" 
+      return res.status(400).send({
+        result: false,
+        message: "Month and year parameters are required"
       });
     }
-    
+
     const refno = await wh_dpbModel.findOne({
       where: {
         monthh: month,
@@ -469,7 +488,7 @@ exports.Wh_dpbrefno = async (req, res) => {
       },
       order: [['refno', 'DESC']],
     });
-    
+
     res.status(200).send({ result: true, data: refno });
   } catch (error) {
     console.error(error);
@@ -489,5 +508,60 @@ exports.searchWh_dpbRunno = async (req, res) => {
     res.status(200).send({ result: true, data: wh_dpbShow });
   } catch (error) {
     res.status(500).send({ message: error });
+  }
+};
+
+exports.getWhDpbByRefno = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // Fetch the specific record by refno
+    const orderData = await wh_dpbModel.findOne({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'branch_code', 'taxable', 'nontaxable',
+        'total', 'user_code', 'created_at'
+      ],
+      include: [
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
+      where: { refno: refno }
+    });
+
+    if (!orderData) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: orderData
+    });
+
+  } catch (error) {
+    console.error("Error in getDpbByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };

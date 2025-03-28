@@ -129,20 +129,25 @@ exports.Kt_rfwdtAlljoindt = async (req, res) => {
       order: [['product_code', 'ASC']]
     });
 
-    // Transform the data
+    // Transform the data - ensure unit_name is included
     const transformedData = kt_rfwdtShow.map(item => {
       const plainItem = item.get({ plain: true });
+
+      // Make sure we're explicitly including unit_name in the transformed data
       return {
         ...plainItem,
         product_name: plainItem.tbl_product?.product_name || '',
         product_code: plainItem.tbl_product?.product_code || '',
         bulk_unit_price: plainItem.tbl_product?.bulk_unit_price || 0,
         retail_unit_price: plainItem.tbl_product?.retail_unit_price || 0,
-        unit_name: plainItem.tbl_unit?.unit_name || '',
+        unit_name: plainItem.tbl_unit?.unit_name || '',  // Ensure unit_name is explicitly set
+        unit_code: plainItem.unit_code || '',
         productUnit1: plainItem.tbl_product?.productUnit1 || null,
         productUnit2: plainItem.tbl_product?.productUnit2 || null
       };
     });
+
+    console.log('Transformed KT RFWDT data:', JSON.stringify(transformedData.slice(0, 1), null, 2)); // Log first item for debugging
 
     res.status(200).send({
       result: true,

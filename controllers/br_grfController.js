@@ -121,18 +121,9 @@ exports.updateBr_grf = async (req, res) => {
 
   try {
     const updateData = req.body;
+    console.log("Received update data:", updateData);
 
-    const detailRecords = await Br_grfdtModel.findAll({
-      where: { refno: updateData.refno },
-      transaction: t
-    });
-
-    const total = detailRecords.reduce((sum, record) => {
-      const qty = Number(record.qty || 0);
-      const uprice = Number(record.uprice || 0);
-      return sum + (qty * uprice);
-    }, 0);
-
+    // First update the header record
     const updateResult = await Br_grfModel.update(
       {
         rdate: updateData.rdate,
@@ -140,7 +131,7 @@ exports.updateBr_grf = async (req, res) => {
         myear: updateData.myear,
         monthh: updateData.monthh,
         branch_code: updateData.branch_code,
-        total: updateData.total,
+        total: updateData.total || 0,
         user_code: updateData.user_code,
       },
       {
@@ -149,18 +140,37 @@ exports.updateBr_grf = async (req, res) => {
       }
     );
 
-    await Br_stockcard.update(
-      {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh
-      },
-      {
-        where: { refno: updateData.refno },
-        transaction: t
-      }
-    );
+    // Delete existing detail records so we can insert fresh ones
+    await Br_grfdtModel.destroy({
+      where: { refno: updateData.refno },
+      transaction: t
+    });
+
+    console.log("Deleted existing details, now inserting new products:",
+      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+
+    // Insert new detail records
+    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+      // Add a unique constraint check and potentially modify the data
+      const productsToInsert = updateData.productArrayData.map((item, index) => ({
+        ...item,
+        // Explicitly set the refno to ensure consistency
+        refno: updateData.refno,
+        // Optional: Add a unique index to prevent conflicts
+        uniqueIndex: `${updateData.refno}_${index}`
+      }));
+
+      // Use upsert instead of bulkCreate to handle potential conflicts
+      const insertPromises = productsToInsert.map(product =>
+        Br_grfdtModel.upsert(product, {
+          transaction: t,
+          // If you want to update existing records
+          conflictFields: ['refno', 'product_code']
+        })
+      );
+
+      await Promise.all(insertPromises);
+    }
 
     await t.commit();
     res.status(200).send({
@@ -470,5 +480,59 @@ exports.searchBr_grfRunno = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: error });
+  }
+};
+
+exports.getGrfByRefno = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // Fetch the specific record by refno
+    const orderData = await Br_grfModel.findOne({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'branch_code', 'total', 'user_code', 'created_at'
+      ],
+      include: [
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
+      where: { refno: refno }
+    });
+
+    if (!orderData) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: orderData
+    });
+
+  } catch (error) {
+    console.error("Error in getGrfByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };

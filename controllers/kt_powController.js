@@ -130,58 +130,90 @@ exports.updateKt_pow = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    const updateData = req.body;
+    const { headerData, productArrayData, footerData } = req.body;
+    console.log("updateKt_pow - request body:", JSON.stringify(req.body, null, 2));
 
-    const detailRecords = await Kt_powdtModel.findAll({
-      where: { refno: updateData.refno },
+    if (!headerData.refno || !headerData.kitchen_code) {
+      throw new Error('Missing required fields');
+    }
+
+    // Step 1: Update header data
+    await Kt_powModel.update(
+      {
+        rdate: headerData.rdate,
+        trdate: headerData.trdate,
+        myear: headerData.myear,
+        monthh: headerData.monthh,
+        kitchen_code: headerData.kitchen_code,
+        taxable: headerData.taxable || 0,
+        nontaxable: headerData.nontaxable || 0,
+        total: footerData?.total || headerData.total || 0,
+        user_code: headerData.user_code
+      },
+      {
+        where: { refno: headerData.refno },
+        transaction: t
+      }
+    );
+
+    // Step 2: Delete all existing detail records for this refno
+    await Kt_powdtModel.destroy({
+      where: { refno: headerData.refno },
       transaction: t
     });
 
-    const balance = detailRecords.reduce((sum, record) => sum - Number(record.qty || 0), 0); // Negative for POW
-    const balance_amount = detailRecords.reduce((sum, record) => {
-      const qty = Number(record.qty || 0);
-      const uprice = Number(record.uprice || 0);
-      return sum - (qty * uprice); // Negative for POW
-    }, 0);
+    // Step 3: Insert new detail records
+    if (productArrayData && productArrayData.length > 0) {
+      await Kt_powdtModel.bulkCreate(productArrayData, { transaction: t });
+    }
 
-    const updateResult = await Kt_powModel.update(
-      {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh,
-        kitchen_code: updateData.kitchen_code,
-        taxable: updateData.taxable || 0,
-        nontaxable: updateData.nontaxable || 0,
-        total: updateData.total || 0,
-        user_code: updateData.user_code,
-        balance: balance,
-        balance_amount: balance_amount
-      },
-      {
-        where: { refno: updateData.refno },
-        transaction: t
-      }
-    );
-
+    // Step 4: Update related stockcard records
     await Kt_stockcard.update(
       {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh
+        rdate: headerData.rdate,
+        trdate: headerData.trdate,
+        myear: headerData.myear,
+        monthh: headerData.monthh
       },
       {
-        where: { refno: updateData.refno },
+        where: { refno: headerData.refno },
         transaction: t
       }
     );
+
+    // Step 5: Recalculate balance
+    if (productArrayData && productArrayData.length > 0) {
+      // Calculate new balance
+      const balance = productArrayData.reduce((sum, item) =>
+        sum - parseFloat(item.qty || 0), 0); // Negative for POW
+
+      const balance_amount = productArrayData.reduce((sum, item) => {
+        const qty = parseFloat(item.qty || 0);
+        const uprice = parseFloat(item.uprice || 0);
+        return sum - (qty * uprice); // Negative for POW
+      }, 0);
+
+      // Update balance in header
+      await Kt_powModel.update(
+        {
+          balance: balance,
+          balance_amount: balance_amount
+        },
+        {
+          where: { refno: headerData.refno },
+          transaction: t
+        }
+      );
+    }
 
     await t.commit();
     res.status(200).send({
       result: true,
       message: 'Updated successfully',
-      updatedRows: updateResult[0]
+      data: {
+        refno: headerData.refno,
+        itemCount: productArrayData ? productArrayData.length : 0
+      }
     });
 
   } catch (error) {
@@ -503,5 +535,60 @@ exports.searchKt_powRunno = async (req, res) => {
   } catch (error) {
     console.error('Error:', error);
     res.status(500).send({ message: error.message });
+  }
+};
+
+exports.getKtPowByRefno = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // Fetch the specific record by refno
+    const orderData = await Kt_powModel.findOne({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'kitchen_code', 'taxable', 'nontaxable',
+        'total', 'user_code', 'created_at'
+      ],
+      include: [
+        {
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
+      where: { refno: refno }
+    });
+
+    if (!orderData) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: orderData
+    });
+
+  } catch (error) {
+    console.error("Error in getPowByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };

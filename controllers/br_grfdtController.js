@@ -101,9 +101,21 @@ exports.countBr_grfdt = async (req, res) => {
   }
 };
 
+// Fix for the br_grfdtController.js - exports.Br_grfdtAlljoindt function
+
 exports.Br_grfdtAlljoindt = async (req, res) => {
   try {
     const { refno } = req.body;
+
+    // Additional validation
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: "Missing required parameter: refno"
+      });
+    }
+
+    console.log(`Processing Br_grfdtAlljoindt request for refno: ${refno}`);
 
     const br_grfdtShow = await Br_grfdtModel.findAll({
       include: [
@@ -132,13 +144,15 @@ exports.Br_grfdtAlljoindt = async (req, res) => {
       order: [['product_code', 'ASC']]
     });
 
+    console.log(`Found ${br_grfdtShow.length} detail records for refno: ${refno}`);
+
     // Transform the data to include all necessary product information
     const transformedData = br_grfdtShow.map(item => {
       const plainItem = item.get({ plain: true });
       return {
         ...plainItem,
         product_name: plainItem.tbl_product?.product_name || '',
-        product_code: plainItem.tbl_product?.product_code || '',
+        product_code: plainItem.product_code || '',
         bulk_unit_price: plainItem.tbl_product?.bulk_unit_price || 0,
         retail_unit_price: plainItem.tbl_product?.retail_unit_price || 0,
         unit_name: plainItem.tbl_unit?.unit_name || '',

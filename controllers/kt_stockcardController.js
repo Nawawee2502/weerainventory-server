@@ -132,65 +132,83 @@ exports.updateKt_stockcard = async (req, res) => {
   try {
     console.log("Update Request Body:", req.body);
 
-    // Calculate new balance and balance_amount
+    // ตรวจสอบว่ามีข้อมูลจำเป็นครบถ้วนหรือไม่
+    if (!req.body.refno || !req.body.myear || !req.body.monthh || !req.body.product_code || !req.body.kitchen_code || !req.body.rdate) {
+      await t.rollback();
+      return res.status(400).send({
+        result: false,
+        message: 'Missing required fields: refno, myear, monthh, product_code, kitchen_code, or rdate'
+      });
+    }
+
+    // หาข้อมูลเดิมก่อนอัปเดต โดยใช้เงื่อนไขที่ครบถ้วน
+    const originalRecord = await Kt_stockcardModel.findOne({
+      where: {
+        refno: req.body.refno,
+        myear: req.body.myear,
+        monthh: req.body.monthh,
+        product_code: req.body.product_code,
+        kitchen_code: req.body.kitchen_code,
+        rdate: req.body.rdate
+      },
+      transaction: t
+    });
+
+    if (!originalRecord) {
+      await t.rollback();
+      return res.status(404).send({
+        result: false,
+        message: "Original record not found"
+      });
+    }
+
+    // ตรวจสอบว่ามีข้อมูลซ้ำหรือไม่ - ถ้ามีการเปลี่ยนวันที่หรือห้องครัว
+    if (req.body.rdate !== originalRecord.rdate || req.body.kitchen_code !== originalRecord.kitchen_code) {
+      const duplicateCheck = await Kt_stockcardModel.findOne({
+        where: {
+          product_code: req.body.product_code,
+          rdate: req.body.rdate,
+          kitchen_code: req.body.kitchen_code,
+          refno: req.body.refno,
+          [Op.not]: {
+            myear: req.body.myear,
+            monthh: req.body.monthh
+          }
+        },
+        transaction: t
+      });
+
+      if (duplicateCheck) {
+        await t.rollback();
+        return res.status(400).send({
+          result: false,
+          message: `This product has already been added for ${req.body.rdate} with reference ${req.body.refno} in this kitchen`,
+          type: 'DUPLICATE_RECORD'
+        });
+      }
+    }
+
+    // Calculate new values
     const newBeg1 = Number(req.body.beg1 || 0);
     const newIn1 = Number(req.body.in1 || 0);
     const newOut1 = Number(req.body.out1 || 0);
     const newUpd1 = Number(req.body.upd1 || 0);
     const newPrice = Number(req.body.uprice || 0);
 
-    // Get all previous records except current record
-    const stockcardRecords = await Kt_stockcardModel.findAll({
-      where: {
-        product_code: req.body.product_code,
-        [Op.not]: {
-          refno: req.body.refno,
-          myear: req.body.myear,
-          monthh: req.body.monthh
-        }
-      },
-      order: [
-        ['trdate', 'ASC'],
-        ['refno', 'ASC']
-      ],
-      raw: true,
-      transaction: t
-    });
-
-    // Calculate totals excluding current record
-    const totals = stockcardRecords.reduce((acc, record) => {
-      return {
-        beg1: acc.beg1 + Number(record.beg1 || 0),
-        in1: acc.in1 + Number(record.in1 || 0),
-        out1: acc.out1 + Number(record.out1 || 0),
-        upd1: acc.upd1 + Number(record.upd1 || 0),
-        beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
-        in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
-        out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
-        upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
-      };
-    }, {
-      beg1: 0, in1: 0, out1: 0, upd1: 0,
-      beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
-    });
-
-    // Calculate running balances
-    const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
-    const currentTransactionBalance = newBeg1 + newIn1 + newUpd1 - newOut1;
-    const finalBalance = previousBalance + currentTransactionBalance;
-
-    const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
+    // Calculate amounts
     const beg1_amt = newBeg1 * newPrice;
     const in1_amt = newIn1 * newPrice;
     const out1_amt = newOut1 * newPrice;
     const upd1_amt = newUpd1 * newPrice;
-    const currentTransactionAmount = beg1_amt + in1_amt + upd1_amt - out1_amt;
-    const finalBalanceAmount = previousBalanceAmount + currentTransactionAmount;
 
+    // Calculate balance - เฉพาะรายการนี้
+    const currentTransactionBalance = newBeg1 + newIn1 + newUpd1 - newOut1;
+    const currentTransactionAmount = beg1_amt + in1_amt + upd1_amt - out1_amt;
+
+    // ใช้เงื่อนไขที่เฉพาะเจาะจงมากขึ้นในการอัปเดต
+    // ต้องระบุทั้ง refno, myear, monthh, product_code, kitchen_code, และ rdate
     const updateResult = await Kt_stockcardModel.update({
-      rdate: req.body.rdate,
       trdate: req.body.trdate,
-      kitchen_code: req.body.kitchen_code,
       unit_code: req.body.unit_code,
       beg1: newBeg1,
       in1: newIn1,
@@ -201,14 +219,16 @@ exports.updateKt_stockcard = async (req, res) => {
       in1_amt: in1_amt,
       out1_amt: out1_amt,
       upd1_amt: upd1_amt,
-      balance: finalBalance,
-      balance_amount: finalBalanceAmount
+      balance: currentTransactionBalance,
+      balance_amount: currentTransactionAmount
     }, {
       where: {
         refno: req.body.refno,
         myear: req.body.myear,
         monthh: req.body.monthh,
-        product_code: req.body.product_code
+        product_code: req.body.product_code,
+        kitchen_code: req.body.kitchen_code,
+        rdate: req.body.rdate  // เพิ่ม rdate เข้าไปในเงื่อนไข
       },
       transaction: t
     });
@@ -242,40 +262,60 @@ exports.deleteKt_stockcard = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    // Find the record to delete
-    const stockcardRecord = await Kt_stockcardModel.findOne({
-      where: {
-        refno: req.body.refno,
-        myear: req.body.myear,
-        monthh: req.body.monthh,
-        product_code: req.body.product_code
-      },
-      transaction: t
-    });
-
-    if (!stockcardRecord) {
+    // ตรวจสอบว่ามีข้อมูลจำเป็นครบถ้วนหรือไม่
+    if (!req.body.refno || !req.body.myear || !req.body.monthh || !req.body.product_code) {
       await t.rollback();
-      return res.status(404).send({
+      return res.status(400).send({
         result: false,
-        message: "Record not found"
+        message: 'Missing required fields: refno, myear, monthh, or product_code'
       });
     }
 
-    // Delete the stockcard record
-    await Kt_stockcardModel.destroy({
-      where: {
-        refno: req.body.refno,
-        myear: req.body.myear,
-        monthh: req.body.monthh,
-        product_code: req.body.product_code
-      },
+    // สร้างเงื่อนไขพื้นฐาน
+    let whereClause = {
+      refno: req.body.refno,
+      myear: req.body.myear,
+      monthh: req.body.monthh,
+      product_code: req.body.product_code
+    };
+
+    // เพิ่มเงื่อนไขเพิ่มเติม
+    if (req.body.kitchen_code) {
+      whereClause.kitchen_code = req.body.kitchen_code;
+    }
+
+    if (req.body.rdate) {
+      whereClause.rdate = req.body.rdate;
+    }
+
+    // ค้นหารายการที่จะลบ
+    const recordsToDelete = await Kt_stockcardModel.findAll({
+      where: whereClause,
+      transaction: t
+    });
+
+    if (recordsToDelete.length === 0) {
+      await t.rollback();
+      return res.status(404).send({
+        result: false,
+        message: "No records found to delete"
+      });
+    }
+
+    // แสดงจำนวนรายการที่จะลบในประวัติการทำงาน
+    console.log(`Found ${recordsToDelete.length} records to delete with criteria:`, whereClause);
+
+    // ลบตามเงื่อนไขที่ระบุ
+    const deleteResult = await Kt_stockcardModel.destroy({
+      where: whereClause,
       transaction: t
     });
 
     await t.commit();
     res.status(200).send({
       result: true,
-      message: 'Deleted successfully'
+      message: 'Deleted successfully',
+      deletedCount: deleteResult
     });
   } catch (error) {
     await t.rollback();

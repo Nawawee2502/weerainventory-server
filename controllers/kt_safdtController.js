@@ -123,7 +123,21 @@ exports.countKt_safdt = async (req, res) => {
 exports.Kt_safdtAlljoindt = async (req, res) => {
   try {
     console.log("Request body in Kt_safdtAlljoindt:", req.body); // Log for debugging
-    const { refno } = req.body;
+    
+    // Extract refno properly, handling both string and object formats
+    let refno;
+    if (typeof req.body === 'object' && req.body !== null) {
+      // If req.body is an object, extract refno from it
+      refno = req.body.refno;
+    } else {
+      // If req.body is not an object, use it directly (though this shouldn't happen)
+      refno = req.body;
+    }
+
+    // Also handle case where refno itself is an object
+    if (typeof refno === 'object' && refno !== null) {
+      refno = refno.refno;
+    }
 
     if (!refno) {
       console.error("Missing refno in request:", req.body);
@@ -157,7 +171,7 @@ exports.Kt_safdtAlljoindt = async (req, res) => {
           required: false
         }
       ],
-      where: { refno: refno },
+      where: { refno: refno }, // Now refno is guaranteed to be a string
       order: [['product_code', 'ASC']]
     });
 

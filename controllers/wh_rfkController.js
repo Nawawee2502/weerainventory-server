@@ -173,25 +173,102 @@ exports.addWh_rfk = async (req, res) => {
 };
 
 exports.updateWh_rfk = async (req, res) => {
+  const t = await sequelize.transaction();
+
   try {
-    wh_rfkModel.update(
+    const updateData = req.body;
+    console.log("Received update data:", updateData);
+
+    // First update the header record
+    const updateResult = await wh_rfkModel.update(
       {
-        rdate: req.body.rdate,
-        trdate: req.body.trdate,
-        myear: req.body.myear,
-        monthh: req.body.monthh,
-        kitchen_code: req.body.kitchen_code,
-        taxable: req.body.taxable,
-        nontaxable: req.body.nontaxable,
-        total: req.body.total,
-        user_code: req.body.user_code,
+        rdate: updateData.rdate,
+        trdate: updateData.trdate,
+        myear: updateData.myear,
+        monthh: updateData.monthh,
+        kitchen_code: updateData.kitchen_code,
+        taxable: updateData.taxable || 0,
+        nontaxable: updateData.nontaxable || 0,
+        total: updateData.total || 0,
+        user_code: updateData.user_code,
       },
-      { where: { refno: req.body.refno } }
+      {
+        where: { refno: updateData.refno },
+        transaction: t
+      }
     );
-    res.status(200).send({ result: true })
+
+    // Delete existing detail records so we can insert fresh ones
+    await wh_rfkdtModel.destroy({
+      where: { refno: updateData.refno },
+      transaction: t
+    });
+
+    console.log("Deleted existing details, now inserting new products:",
+      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+
+    // Insert new detail records
+    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+      // Add a unique constraint check and potentially modify the data
+      const productsToInsert = updateData.productArrayData.map((item, index) => ({
+        ...item,
+        // Explicitly set the refno to ensure consistency
+        refno: updateData.refno,
+        // Optional: Add a unique index to prevent conflicts
+        uniqueIndex: `${updateData.refno}_${index}`
+      }));
+
+      // Use upsert instead of bulkCreate to handle potential conflicts
+      const insertPromises = productsToInsert.map(product =>
+        wh_rfkdtModel.upsert(product, {
+          transaction: t,
+          // If you want to update existing records
+          conflictFields: ['refno', 'product_code']
+        })
+      );
+
+      await Promise.all(insertPromises);
+    }
+
+    // Update stockcard if needed
+    await Wh_stockcard.update(
+      {
+        rdate: updateData.rdate,
+        trdate: updateData.trdate,
+        myear: updateData.myear,
+        monthh: updateData.monthh
+      },
+      {
+        where: { refno: updateData.refno },
+        transaction: t
+      }
+    );
+
+    // Update product lotno if needed
+    await Wh_product_lotno.update(
+      {
+        rdate: updateData.rdate
+      },
+      {
+        where: { refno: updateData.refno },
+        transaction: t
+      }
+    );
+
+    await t.commit();
+    res.status(200).send({
+      result: true,
+      message: 'Updated successfully',
+      updatedRows: updateResult[0]
+    });
+
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    await t.rollback();
+    console.error('Update Error:', error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
@@ -428,5 +505,60 @@ exports.searchWh_rfkRunno = async (req, res) => {
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
+  }
+};
+
+exports.getWhRfkByRefno = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // Fetch the specific record by refno
+    const orderData = await wh_rfkModel.findOne({
+      attributes: [
+        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'kitchen_code', 'taxable', 'nontaxable',
+        'total', 'user_code', 'created_at'
+      ],
+      include: [
+        {
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
+      where: { refno: refno }
+    });
+
+    if (!orderData) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: orderData
+    });
+
+  } catch (error) {
+    console.error("Error in getRfkByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
