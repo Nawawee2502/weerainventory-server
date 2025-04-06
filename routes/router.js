@@ -161,7 +161,8 @@ const {
   Wh_rfkrefno,
   searchWh_rfkRunno,
   Wh_rfkByRefno,
-  getWhRfkByRefno
+  getWhRfkByRefno,
+  Wh_rfkUsedRefnos
 } = require("../controllers/wh_rfkController")
 
 const {
@@ -183,7 +184,8 @@ const {
   searchWh_dpbRunno,
   Wh_dpbByRefno,
   countWh_dpb,
-  getWhDpbByRefno
+  getWhDpbByRefno,
+  Wh_dpbUsedRefnos
 } = require("../controllers/wh_dpbController")
 
 const {
@@ -454,7 +456,9 @@ const {
   Br_powrefno,
   searchBr_powRunno,
   Br_powByRefno,
-  getPowByRefno
+  getPowByRefno,
+  checkPowStatusForEdit,
+  checkPOUsedInDispatch
 } = require("../controllers/br_powController")
 
 const {
@@ -747,7 +751,7 @@ router.post("/Wh_rfkrefno", Wh_rfkrefno);
 router.post("/wh_rfkbyrefno", Wh_rfkByRefno);
 router.post("/searchWh_rfkRunno", searchWh_rfkRunno);
 router.post("/getWhRfkByRefno", getWhRfkByRefno);
-
+router.post("/wh-rfk-used-refnos", Wh_rfkUsedRefnos);
 
 router.post("/addWh_rfkdt", addWh_rfkdt);
 router.post("/updatewh_rfkdt", updateWh_rfkdt);
@@ -766,6 +770,7 @@ router.post("/wh_dpbbyrefno", Wh_dpbByRefno);
 router.post("/searchWh_dpbRunno", searchWh_dpbRunno);
 router.post("/countWh_dpb", countWh_dpb);
 router.post("/getWhDpbByRefno", getWhDpbByRefno);
+router.post("/wh-dpb-used-refnos", Wh_dpbUsedRefnos);
 
 
 router.post("/addWh_dpbdt", addWh_dpbdt);
@@ -995,7 +1000,8 @@ router.post("/Br_powrefno", Br_powrefno);
 router.post("/Br_powbyrefno", Br_powByRefno);
 router.post("/searchBr_powRunno", searchBr_powRunno)
 router.post("/getPowByRefno", getPowByRefno);
-
+router.post("/checkPowStatusForEdit", checkPowStatusForEdit);
+router.post("/checkPOUsedInDispatch", checkPOUsedInDispatch);
 
 router.post("/addBr_powdt", addBr_powdt);
 router.post("/updateBr_powdt", updateBr_powdt);

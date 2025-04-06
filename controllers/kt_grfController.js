@@ -123,60 +123,120 @@ exports.updateKt_grf = async (req, res) => {
     const updateData = req.body;
     console.log("Received update data:", updateData);
 
-    // First update the header record
-    const updateResult = await Kt_grfModel.update(
-      {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh,
-        kitchen_code: updateData.kitchen_code,
-        total: updateData.total || 0,
-        user_code: updateData.user_code,
-      },
-      {
-        where: { refno: updateData.refno },
-        transaction: t
+    // Check if we have the required headerData structure
+    if (updateData.headerData) {
+      // We're receiving the new structure with headerData
+      const { headerData, productArrayData, footerData } = updateData;
+
+      // Make sure we have a valid refno
+      if (!headerData.refno) {
+        throw new Error('Missing required refno in header data');
       }
-    );
 
-    // Delete existing detail records so we can insert fresh ones
-    await Kt_grfdtModel.destroy({
-      where: { refno: updateData.refno },
-      transaction: t
-    });
-
-    console.log("Deleted existing details, now inserting new products:",
-      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
-
-    // Insert new detail records
-    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
-      // Add a unique constraint check and potentially modify the data
-      const productsToInsert = updateData.productArrayData.map((item, index) => ({
-        ...item,
-        // Explicitly set the refno to ensure consistency
-        refno: updateData.refno,
-        // Optional: Add a unique index to prevent conflicts
-        uniqueIndex: `${updateData.refno}_${index}`
-      }));
-
-      // Use upsert instead of bulkCreate to handle potential conflicts
-      const insertPromises = productsToInsert.map(product =>
-        Kt_grfdtModel.upsert(product, {
-          transaction: t,
-          // If you want to update existing records
-          conflictFields: ['refno', 'product_code']
-        })
+      // Update the header record
+      const updateResult = await Kt_grfModel.update(
+        {
+          rdate: headerData.rdate,
+          trdate: headerData.trdate,
+          myear: headerData.myear,
+          monthh: headerData.monthh,
+          kitchen_code: headerData.kitchen_code,
+          total: footerData ? footerData.total : 0,
+          user_code: headerData.user_code,
+        },
+        {
+          where: { refno: headerData.refno },
+          transaction: t
+        }
       );
 
-      await Promise.all(insertPromises);
+      // Delete existing detail records so we can insert fresh ones
+      await Kt_grfdtModel.destroy({
+        where: { refno: headerData.refno },
+        transaction: t
+      });
+
+      console.log("Deleted existing details, now inserting new products:",
+        productArrayData ? productArrayData.length : "No products array");
+
+      // Insert new detail records
+      if (productArrayData && productArrayData.length > 0) {
+        // Add a unique constraint check and potentially modify the data
+        const productsToInsert = productArrayData.map((item, index) => ({
+          ...item,
+          // Explicitly set the refno to ensure consistency
+          refno: headerData.refno,
+          // Optional: Add a unique index to prevent conflicts
+          uniqueIndex: `${headerData.refno}_${index}`
+        }));
+
+        // Use upsert instead of bulkCreate to handle potential conflicts
+        const insertPromises = productsToInsert.map(product =>
+          Kt_grfdtModel.upsert(product, {
+            transaction: t,
+            // If you want to update existing records
+            conflictFields: ['refno', 'product_code']
+          })
+        );
+
+        await Promise.all(insertPromises);
+      }
+    } else {
+      // Legacy structure (direct fields)
+      // First update the header record
+      const updateResult = await Kt_grfModel.update(
+        {
+          rdate: updateData.rdate,
+          trdate: updateData.trdate,
+          myear: updateData.myear,
+          monthh: updateData.monthh,
+          kitchen_code: updateData.kitchen_code,
+          total: updateData.total || 0,
+          user_code: updateData.user_code,
+        },
+        {
+          where: { refno: updateData.refno },
+          transaction: t
+        }
+      );
+
+      // Delete existing detail records so we can insert fresh ones
+      await Kt_grfdtModel.destroy({
+        where: { refno: updateData.refno },
+        transaction: t
+      });
+
+      console.log("Deleted existing details, now inserting new products:",
+        updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+
+      // Insert new detail records
+      if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+        // Add a unique constraint check and potentially modify the data
+        const productsToInsert = updateData.productArrayData.map((item, index) => ({
+          ...item,
+          // Explicitly set the refno to ensure consistency
+          refno: updateData.refno,
+          // Optional: Add a unique index to prevent conflicts
+          uniqueIndex: `${updateData.refno}_${index}`
+        }));
+
+        // Use upsert instead of bulkCreate to handle potential conflicts
+        const insertPromises = productsToInsert.map(product =>
+          Kt_grfdtModel.upsert(product, {
+            transaction: t,
+            // If you want to update existing records
+            conflictFields: ['refno', 'product_code']
+          })
+        );
+
+        await Promise.all(insertPromises);
+      }
     }
 
     await t.commit();
     res.status(200).send({
       result: true,
       message: 'Updated successfully',
-      updatedRows: updateResult[0]
     });
 
   } catch (error) {

@@ -32,6 +32,9 @@ module.exports = (sequelize, DataTypes) => {
       nontaxable: {
         type: DataTypes.DOUBLE(12, 2),
       },
+      status: {
+        type: DataTypes.STRING(10),
+      },
       user_code: {
         type: DataTypes.STRING(10),
       },

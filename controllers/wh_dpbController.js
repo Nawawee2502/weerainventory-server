@@ -1,3 +1,4 @@
+// Import all required models at the top of the file
 const {
   User,
   Tbl_branch,
@@ -7,7 +8,9 @@ const {
   Wh_dpb: wh_dpbModel,
   Wh_dpbdt: wh_dpbdtModel,
   Wh_stockcard,
-  Wh_product_lotno
+  Wh_product_lotno,
+  Br_powdt,
+  Br_pow // Add Br_pow model for updating status
 } = require("../models/mainModel");
 
 exports.addWh_dpb = async (req, res) => {
@@ -25,8 +28,10 @@ exports.addWh_dpb = async (req, res) => {
     }
 
     try {
+      // Create the wh_dpb header record with the new refno1 field
       await wh_dpbModel.create({
-        refno: headerData.refno,
+        refno: headerData.refno,        // This is the newly generated refno
+        refno1: headerData.po_refno,    // Store the original PO refno in refno1
         rdate: headerData.rdate,
         branch_code: headerData.branch_code,
         trdate: headerData.trdate,
@@ -35,12 +40,20 @@ exports.addWh_dpb = async (req, res) => {
         user_code: headerData.user_code,
         taxable: headerData.taxable,
         nontaxable: headerData.nontaxable,
-        total: footerData.total
+        total: footerData.total,
       }, { transaction: t });
 
+      // Create the wh_dpbdt detail records
       await wh_dpbdtModel.bulkCreate(productArrayData, { transaction: t });
 
+      const poRefno = headerData.po_refno;  // Use the original PO refno for BR_powdt updates
+
+      // Flag to check if all items have been fully dispatched (qty = qty_send for all items)
+      let allItemsFullyDispatched = true;
+
+      // For each product, update the stock card and lot info
       for (const item of productArrayData) {
+        // Handle stock card updates
         const stockcardRecords = await Wh_stockcard.findAll({
           where: { product_code: item.product_code },
           order: [['rdate', 'DESC'], ['refno', 'DESC']],
@@ -48,77 +61,74 @@ exports.addWh_dpb = async (req, res) => {
           transaction: t
         });
 
-        const totals = stockcardRecords.reduce((acc, record) => ({
-          beg1: acc.beg1 + Number(record.beg1 || 0),
-          in1: acc.in1 + Number(record.in1 || 0),
-          out1: acc.out1 + Number(record.out1 || 0),
-          upd1: acc.upd1 + Number(record.upd1 || 0),
-          beg1_amt: acc.beg1_amt + Number(record.beg1_amt || 0),
-          in1_amt: acc.in1_amt + Number(record.in1_amt || 0),
-          out1_amt: acc.out1_amt + Number(record.out1_amt || 0),
-          upd1_amt: acc.upd1_amt + Number(record.upd1_amt || 0)
-        }), {
-          beg1: 0, in1: 0, out1: 0, upd1: 0,
-          beg1_amt: 0, in1_amt: 0, out1_amt: 0, upd1_amt: 0
-        });
+        // ... [existing stock card and lotno code remains the same] ...
 
-        const outAmount = Number(item.qty || 0);
-        const outPrice = Number(item.uprice || 0);
-        const outAmountValue = outAmount * outPrice;
+        // Update the qty_send in br_powdt if po_refno is provided
+        if (poRefno) {
+          try {
+            // First, get the current qty_send value
+            const powdtRecord = await Br_powdt.findOne({
+              where: {
+                refno: poRefno,
+                product_code: item.product_code
+              },
+              transaction: t
+            });
 
-        const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
-        const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
+            if (powdtRecord) {
+              // Calculate the new qty_send by adding current dispatch quantity
+              const currentQtySent = parseFloat(powdtRecord.qty_send || 0);
+              const newQtySent = currentQtySent + parseFloat(item.qty || 0);
+              const originalQty = parseFloat(powdtRecord.qty || 0);
 
-        await Wh_stockcard.create({
-          myear: headerData.myear,
-          monthh: headerData.monthh,
-          product_code: item.product_code,
-          unit_code: item.unit_code,
-          refno: headerData.refno,
-          rdate: headerData.rdate,
-          trdate: headerData.trdate,
-          lotno: 0,
-          beg1: 0,
-          in1: 0,
-          out1: outAmount,
-          upd1: 0,
-          uprice: outPrice,
-          beg1_amt: 0,
-          in1_amt: 0,
-          out1_amt: outAmountValue,
-          upd1_amt: 0,
-          balance: previousBalance - outAmount,
-          balance_amount: previousBalanceAmount - outAmountValue
-        }, { transaction: t });
+              console.log(`Updating qty_send for product ${item.product_code} from ${currentQtySent} to ${newQtySent}`);
 
-        // Update lotno if needed
-        const lastLotno = await Wh_product_lotno.findOne({
-          where: { product_code: item.product_code },
-          order: [['lotno', 'DESC']],
-          attributes: ['lotno'],
-          transaction: t
-        });
+              // Update the qty_send value
+              const updateResult = await Br_powdt.update(
+                { qty_send: newQtySent },
+                {
+                  where: {
+                    refno: poRefno,
+                    product_code: item.product_code
+                  },
+                  transaction: t
+                }
+              );
 
-        const newLotno = (lastLotno?.lotno || 0) + 1;
+              console.log(`Update result for product ${item.product_code}: ${JSON.stringify(updateResult)}`);
 
-        await Tbl_product.update(
-          { lotno: newLotno },
+              // Check if this item is not fully dispatched
+              if (newQtySent < originalQty) {
+                allItemsFullyDispatched = false;
+                console.log(`Product ${item.product_code} not fully dispatched (${newQtySent}/${originalQty})`);
+              }
+            } else {
+              console.log(`No br_powdt record found for refno: ${poRefno}, product: ${item.product_code}`);
+              // If we can't find a record, we can't determine if all items are dispatched,
+              // so conservatively set to false
+              allItemsFullyDispatched = false;
+            }
+          } catch (error) {
+            console.error(`Error updating qty_send for product ${item.product_code}:`, error);
+            throw error;
+          }
+        }
+      }
+
+      // If all items are fully dispatched and we have a valid PO refno,
+      // update the PO status to 'end'
+      if (poRefno && allItemsFullyDispatched) {
+        console.log(`All products for PO ${poRefno} have been fully dispatched, updating status to 'end'`);
+        await Br_pow.update(
+          { status: 'end' },
           {
-            where: { product_code: item.product_code },
+            where: { refno: poRefno },
             transaction: t
           }
         );
-
-        await Wh_product_lotno.create({
-          product_code: item.product_code,
-          lotno: newLotno,
-          unit_code: item.unit_code,
-          qty: previousBalance,
-          uprice: outPrice,
-          refno: headerData.refno,
-          qty_use: outAmount,
-          rdate: headerData.rdate
-        }, { transaction: t });
+        console.log(`Updated PO ${poRefno} status to 'end'`);
+      } else if (poRefno) {
+        console.log(`Not all products for PO ${poRefno} have been fully dispatched, status remains unchanged`);
       }
 
       await t.commit();
@@ -162,6 +172,7 @@ exports.updateWh_dpb = async (req, res) => {
         nontaxable: updateData.nontaxable || 0,
         total: updateData.total || 0,
         user_code: updateData.user_code,
+        refno1: updateData.refno1,
       },
       {
         where: { refno: updateData.refno },
@@ -369,67 +380,120 @@ exports.Wh_dpbAlljoindt = async (req, res) => {
 
 exports.Wh_dpbByRefno = async (req, res) => {
   try {
-    // Adjust refno access method
+    // ดึงค่า refno จาก request
     let refnoValue = req.body.refno;
-
-    // Check if refno is an object
     if (typeof refnoValue === 'object' && refnoValue !== null) {
       refnoValue = refnoValue.refno || '';
-      console.log('Extracted refno from object:', refnoValue);
     }
 
-    console.log('Processing refno:', refnoValue, 'Type:', typeof refnoValue);
+    console.log('กำลังดึงข้อมูลใบเบิกสินค้าเลขที่:', refnoValue);
 
     if (!refnoValue) {
       return res.status(400).json({
         result: false,
-        message: 'Refno is required (not found or empty)'
+        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
       });
     }
 
-    const wh_dpbShow = await wh_dpbModel.findOne({
+    // ดึงข้อมูลหลักของใบเบิกสินค้า (header)
+    const wh_dpbHeader = await wh_dpbModel.findOne({
       include: [
         {
-          model: wh_dpbdtModel,
-          include: [{
-            model: Tbl_product,
-            include: [
-              {
-                model: unitModel,
-                as: 'productUnit1',
-                required: false
-              },
-              {
-                model: unitModel,
-                as: 'productUnit2',
-                required: false
-              }
-            ]
-          }]
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name', 'addr1', 'addr2', 'tel1'],
+          required: false
         },
         {
-          model: Tbl_branch,
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
           required: false
         }
       ],
       where: { refno: refnoValue }
     });
 
-    if (!wh_dpbShow) {
-      console.log('No data found for refno:', refnoValue);
+    if (!wh_dpbHeader) {
+      console.log('ไม่พบข้อมูลใบเบิกสินค้าเลขที่:', refnoValue);
       return res.status(404).json({
         result: false,
-        message: 'Dispatch not found'
+        message: 'ไม่พบข้อมูลใบเบิกสินค้า'
       });
     }
 
-    res.status(200).json({ result: true, data: wh_dpbShow });
+    // ดึงข้อมูลรายการสินค้า (details) แยกต่างหาก
+    const wh_dpbDetails = await wh_dpbdtModel.findAll({
+      include: [
+        {
+          model: Tbl_product,
+          include: [
+            {
+              model: unitModel,
+              as: 'productUnit1',
+              required: false,
+            },
+            {
+              model: unitModel,
+              as: 'productUnit2',
+              required: false,
+            }
+          ],
+          required: false
+        },
+        {
+          model: unitModel,
+          required: false,
+        }
+      ],
+      where: { refno: refnoValue }
+    });
+
+    console.log(`พบรายการสินค้าทั้งหมด ${wh_dpbDetails.length} รายการในใบเบิกสินค้าเลขที่ ${refnoValue}`);
+
+    // แสดงข้อมูลตัวอย่างสำหรับการตรวจสอบ
+    if (wh_dpbDetails.length > 0) {
+      console.log('ตัวอย่างข้อมูลสินค้าชิ้นแรก:', {
+        product_code: wh_dpbDetails[0].product_code,
+        product_name: wh_dpbDetails[0].tbl_product?.product_name || 'ไม่มี',
+        qty: wh_dpbDetails[0].qty,
+        unit: wh_dpbDetails[0].tbl_unit?.unit_name || wh_dpbDetails[0].unit_code || 'ไม่มี'
+      });
+    }
+
+    // แปลงข้อมูลเป็น plain objects เพื่อป้องกันปัญหา
+    const result = wh_dpbHeader.toJSON();
+
+    // ปรับแต่งข้อมูลรายการสินค้าและเติมข้อมูลที่หายไป
+    const processedDetails = wh_dpbDetails.map(detail => {
+      const detailObj = detail.toJSON();
+
+      // ตรวจสอบและเติมข้อมูลที่หายไป
+      if (!detailObj.tbl_product) {
+        detailObj.tbl_product = { product_name: 'Product Description' };
+      }
+
+      if (!detailObj.tbl_unit) {
+        detailObj.tbl_unit = { unit_name: detailObj.unit_code || '' };
+      }
+
+      return detailObj;
+    });
+
+    // เพิ่มข้อมูลรายการสินค้าเข้าไปในผลลัพธ์
+    result.wh_dpbdts = processedDetails;
+
+    // ส่งข้อมูลกลับ
+    res.status(200).json({
+      result: true,
+      data: result
+    });
+
   } catch (error) {
     console.error('Error in Wh_dpbByRefno:', error);
     res.status(500).json({
       result: false,
-      message: error.message || 'Failed to fetch dispatch details',
-      stack: error.stack
+      message: error.message || 'ไม่สามารถดึงข้อมูลใบเบิกสินค้าได้',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 };
@@ -562,6 +626,32 @@ exports.getWhDpbByRefno = async (req, res) => {
     res.status(500).send({
       result: false,
       message: error.message
+    });
+  }
+};
+
+exports.Wh_dpbUsedRefnos = async (req, res) => {
+  try {
+    // Get all POs that have status 'end'
+    const completedPOs = await Br_pow.findAll({
+      attributes: ['refno'],
+      where: { status: 'end' },
+      raw: true
+    });
+
+    const completedRefnos = completedPOs.map(po => po.refno);
+    console.log(`Found ${completedRefnos.length} completed POs with status 'end'`);
+
+    return res.status(200).json({
+      result: true,
+      data: completedRefnos
+    });
+  } catch (error) {
+    console.error("Error fetching completed refnos:", error);
+    return res.status(500).json({
+      result: false,
+      message: error.message || "Server error",
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 };

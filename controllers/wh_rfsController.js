@@ -535,35 +535,88 @@ exports.Wh_rfsAlljoindt = async (req, res) => {
 
 exports.Wh_rfsByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    const refno = req.params.refno || req.body.refno;
 
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // ดึงข้อมูลหลัก (header)
     const wh_rfsShow = await Wh_rfs.findOne({
       include: [
         {
-          model: Wh_rfsdt,
-          include: [{
-            model: Tbl_product,
-            include: [
-              {
-                model: Tbl_unit,
-                as: 'productUnit1',
-                required: true,
-              },
-              {
-                model: Tbl_unit,
-                as: 'productUnit2',
-                required: true,
-              },
-            ],
-          }],
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name', 'addr1', 'addr2', 'tel1'],
+          required: false,
         },
+        {
+          model: Tbl_supplier,
+          attributes: ['supplier_code', 'supplier_name', 'addr1', 'addr2', 'tel1'],
+          required: false,
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false,
+        }
       ],
       where: { refno: refno }
     });
-    res.status(200).send({ result: true, data: wh_rfsShow })
+
+    if (!wh_rfsShow) {
+      return res.status(404).send({
+        result: false,
+        message: 'Receipt not found'
+      });
+    }
+
+    // ดึงข้อมูลรายละเอียด (details) แยกต่างหาก พร้อมข้อมูล product และ unit
+    const details = await Wh_rfsdt.findAll({
+      include: [
+        {
+          model: Tbl_product,
+          include: [
+            {
+              model: Tbl_unit,
+              as: 'productUnit1',
+              required: false,
+            },
+            {
+              model: Tbl_unit,
+              as: 'productUnit2',
+              required: false,
+            }
+          ],
+          required: false,
+        },
+        {
+          model: Tbl_unit,
+          required: false,
+        }
+      ],
+      where: { refno: refno }
+    });
+
+    console.log("Details found:", details.length);
+
+    // รวมข้อมูลเข้าด้วยกัน
+    const response = wh_rfsShow.toJSON();
+    response.wh_rfsdts = details;
+
+    res.status(200).send({
+      result: true,
+      data: response
+    });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.error("Error in Wh_rfsByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 

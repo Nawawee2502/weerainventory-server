@@ -126,63 +126,126 @@ exports.updateKt_dpb = async (req, res) => {
     const updateData = req.body;
     console.log("Received update data:", updateData);
 
-    // First update the header record
-    const updateResult = await Kt_dpbModel.update(
-      {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh,
-        kitchen_code: updateData.kitchen_code,
-        branch_code: updateData.branch_code,
-        taxable: updateData.taxable || 0,
-        nontaxable: updateData.nontaxable || 0,
-        total: updateData.total || 0,
-        user_code: updateData.user_code,
-      },
-      {
-        where: { refno: updateData.refno },
-        transaction: t
+    // Check if we have the new structure with headerData
+    if (updateData.headerData) {
+      // We're receiving the new nested structure
+      const { headerData, productArrayData, footerData } = updateData;
+
+      // Make sure we have a valid refno in headerData
+      if (!headerData.refno) {
+        throw new Error('Missing required refno in header data');
       }
-    );
 
-    // Delete existing detail records so we can insert fresh ones
-    await Kt_dpbdtModel.destroy({
-      where: { refno: updateData.refno },
-      transaction: t
-    });
-
-    console.log("Deleted existing details, now inserting new products:",
-      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
-
-    // Insert new detail records
-    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
-      // Add a unique constraint check and potentially modify the data
-      const productsToInsert = updateData.productArrayData.map((item, index) => ({
-        ...item,
-        // Explicitly set the refno to ensure consistency
-        refno: updateData.refno,
-        // Optional: Add a unique index to prevent conflicts
-        uniqueIndex: `${updateData.refno}_${index}`
-      }));
-
-      // Use upsert instead of bulkCreate to handle potential conflicts
-      const insertPromises = productsToInsert.map(product =>
-        Kt_dpbdtModel.upsert(product, {
-          transaction: t,
-          // If you want to update existing records
-          conflictFields: ['refno', 'product_code']
-        })
+      // Update the header record
+      const updateResult = await Kt_dpbModel.update(
+        {
+          rdate: headerData.rdate,
+          trdate: headerData.trdate,
+          myear: headerData.myear,
+          monthh: headerData.monthh,
+          kitchen_code: headerData.kitchen_code,
+          branch_code: headerData.branch_code,
+          taxable: footerData.taxable || 0,
+          nontaxable: footerData.nontaxable || 0,
+          total: footerData.total || 0,
+          user_code: headerData.user_code,
+        },
+        {
+          where: { refno: headerData.refno },
+          transaction: t
+        }
       );
 
-      await Promise.all(insertPromises);
+      // Delete existing detail records
+      await Kt_dpbdtModel.destroy({
+        where: { refno: headerData.refno },
+        transaction: t
+      });
+
+      console.log("Deleted existing details, now inserting new products:",
+        productArrayData ? productArrayData.length : "No products array");
+
+      // Insert new detail records
+      if (productArrayData && productArrayData.length > 0) {
+        // Add a unique constraint check and potentially modify the data
+        const productsToInsert = productArrayData.map((item, index) => ({
+          ...item,
+          // Explicitly set the refno to ensure consistency
+          refno: headerData.refno,
+          // Optional: Add a unique index to prevent conflicts
+          uniqueIndex: `${headerData.refno}_${index}`
+        }));
+
+        // Use upsert instead of bulkCreate to handle potential conflicts
+        const insertPromises = productsToInsert.map(product =>
+          Kt_dpbdtModel.upsert(product, {
+            transaction: t,
+            // If you want to update existing records
+            conflictFields: ['refno', 'product_code']
+          })
+        );
+
+        await Promise.all(insertPromises);
+      }
+    } else {
+      // Legacy structure with direct properties - this should still work for backward compatibility
+      // First update the header record
+      const updateResult = await Kt_dpbModel.update(
+        {
+          rdate: updateData.rdate,
+          trdate: updateData.trdate,
+          myear: updateData.myear,
+          monthh: updateData.monthh,
+          kitchen_code: updateData.kitchen_code,
+          branch_code: updateData.branch_code,
+          taxable: updateData.taxable || 0,
+          nontaxable: updateData.nontaxable || 0,
+          total: updateData.total || 0,
+          user_code: updateData.user_code,
+        },
+        {
+          where: { refno: updateData.refno },
+          transaction: t
+        }
+      );
+
+      // Delete existing detail records so we can insert fresh ones
+      await Kt_dpbdtModel.destroy({
+        where: { refno: updateData.refno },
+        transaction: t
+      });
+
+      console.log("Deleted existing details, now inserting new products:",
+        updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+
+      // Insert new detail records
+      if (updateData.productArrayData && updateData.productArrayData.length > 0) {
+        // Add a unique constraint check and potentially modify the data
+        const productsToInsert = updateData.productArrayData.map((item, index) => ({
+          ...item,
+          // Explicitly set the refno to ensure consistency
+          refno: updateData.refno,
+          // Optional: Add a unique index to prevent conflicts
+          uniqueIndex: `${updateData.refno}_${index}`
+        }));
+
+        // Use upsert instead of bulkCreate to handle potential conflicts
+        const insertPromises = productsToInsert.map(product =>
+          Kt_dpbdtModel.upsert(product, {
+            transaction: t,
+            // If you want to update existing records
+            conflictFields: ['refno', 'product_code']
+          })
+        );
+
+        await Promise.all(insertPromises);
+      }
     }
 
     await t.commit();
     res.status(200).send({
       result: true,
-      message: 'Updated successfully',
-      updatedRows: updateResult[0]
+      message: 'Updated successfully'
     });
 
   } catch (error) {

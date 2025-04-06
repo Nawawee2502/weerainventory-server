@@ -406,41 +406,123 @@ exports.Wh_dpkAllrdate = async (req, res) => {
   }
 };
 
-// *********************แก้ไขใหม่********************* 
 exports.Wh_dpkByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    // ดึงค่า refno จาก request
+    let refnoValue = req.body.refno;
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+    }
 
-    const Wh_dpkShow = await wh_dpkModel.findOne({
+    console.log('กำลังดึงข้อมูลใบเบิกครัวเลขที่:', refnoValue);
+
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
+      });
+    }
+
+    // ดึงข้อมูลหลักของใบเบิกครัว (header)
+    const wh_dpkHeader = await wh_dpkModel.findOne({
       include: [
         {
-          model: wh_dpkdtModel,
-          include: [{
-            model: Tbl_product,
-            include: [
-              {
-                model: unitModel,
-                as: 'productUnit1',
-                required: true,
-              },
-              {
-                model: unitModel,
-                as: 'productUnit2',
-                required: true,
-              },
-            ],
-          }],
-          // as: "postoposdt",
-          // required: true,
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
+          required: false
         },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
       ],
-      where: { refno: refno }
-      // offset:offset,limit:limit 
+      where: { refno: refnoValue }
     });
-    res.status(200).send({ result: true, data: Wh_dpkShow })
+
+    if (!wh_dpkHeader) {
+      console.log('ไม่พบข้อมูลใบเบิกครัวเลขที่:', refnoValue);
+      return res.status(404).json({
+        result: false,
+        message: 'ไม่พบข้อมูลใบเบิกครัว'
+      });
+    }
+
+    // ดึงข้อมูลรายการสินค้า (details) แยกต่างหาก
+    const wh_dpkDetails = await wh_dpkdtModel.findAll({
+      include: [
+        {
+          model: Tbl_product,
+          include: [
+            {
+              model: unitModel,
+              as: 'productUnit1',
+              required: false,
+            },
+            {
+              model: unitModel,
+              as: 'productUnit2',
+              required: false,
+            }
+          ],
+          required: false
+        },
+        {
+          model: unitModel,
+          required: false,
+        }
+      ],
+      where: { refno: refnoValue }
+    });
+
+    console.log(`พบรายการสินค้าทั้งหมด ${wh_dpkDetails.length} รายการในใบเบิกครัวเลขที่ ${refnoValue}`);
+
+    // แสดงข้อมูลตัวอย่างสำหรับการตรวจสอบ
+    if (wh_dpkDetails.length > 0) {
+      console.log('ตัวอย่างข้อมูลสินค้าชิ้นแรก:', {
+        product_code: wh_dpkDetails[0].product_code,
+        product_name: wh_dpkDetails[0].tbl_product?.product_name || 'ไม่มี',
+        qty: wh_dpkDetails[0].qty,
+        unit: wh_dpkDetails[0].tbl_unit?.unit_name || wh_dpkDetails[0].unit_code || 'ไม่มี'
+      });
+    }
+
+    // แปลงข้อมูลเป็น plain objects เพื่อป้องกันปัญหา
+    const result = wh_dpkHeader.toJSON();
+
+    // ปรับแต่งข้อมูลรายการสินค้าและเติมข้อมูลที่หายไป
+    const processedDetails = wh_dpkDetails.map(detail => {
+      const detailObj = detail.toJSON();
+
+      // ตรวจสอบและเติมข้อมูลที่หายไป
+      if (!detailObj.tbl_product) {
+        detailObj.tbl_product = { product_name: 'Product Description' };
+      }
+
+      if (!detailObj.tbl_unit) {
+        detailObj.tbl_unit = { unit_name: detailObj.unit_code || '' };
+      }
+
+      return detailObj;
+    });
+
+    // เพิ่มข้อมูลรายการสินค้าเข้าไปในผลลัพธ์
+    result.wh_dpkdts = processedDetails;
+
+    // ส่งข้อมูลกลับ
+    res.status(200).json({
+      result: true,
+      data: result
+    });
+
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.error('Error in Wh_dpkByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'ไม่สามารถดึงข้อมูลใบเบิกครัวได้',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 

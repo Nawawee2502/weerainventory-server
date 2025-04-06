@@ -369,35 +369,114 @@ exports.Br_rfsAlljoindt = async (req, res) => {
 
 exports.Br_rfsByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    // ดึงค่า refno จาก request
+    let refnoValue = req.body.refno;
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+    }
 
-    const br_rfsShow = await br_rfsModel.findOne({
+    console.log('กำลังดึงข้อมูลใบรับสินค้าจาก Supplier เลขที่:', refnoValue);
+
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
+      });
+    }
+
+    // ดึงข้อมูลหลักของใบรับสินค้าจาก Supplier (header)
+    const br_rfsHeader = await br_rfsModel.findOne({
       include: [
         {
-          model: br_rfsdtModel,
-          include: [{
-            model: Tbl_product,
-            include: [
-              {
-                model: Unit,
-                as: 'productUnit1',
-                required: true,
-              },
-              {
-                model: Unit,
-                as: 'productUnit2',
-                required: true,
-              },
-            ],
-          }],
+          model: Tbl_supplier,
+          attributes: ['supplier_code', 'supplier_name', 'addr1', 'addr2', 'tel1'],
+          required: false
         },
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name', 'addr1', 'addr2', 'tel1'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
       ],
-      where: { refno: refno }
+      where: { refno: refnoValue }
     });
-    res.status(200).send({ result: true, data: br_rfsShow });
+
+    if (!br_rfsHeader) {
+      console.log('ไม่พบข้อมูลใบรับสินค้าจาก Supplier เลขที่:', refnoValue);
+      return res.status(404).json({
+        result: false,
+        message: 'ไม่พบข้อมูลใบรับสินค้าจาก Supplier'
+      });
+    }
+
+    // ดึงข้อมูลรายการสินค้า (details) แยกต่างหาก
+    const br_rfsDetails = await br_rfsdtModel.findAll({
+      include: [
+        {
+          model: Tbl_product,
+          required: false
+        },
+        {
+          model: Tbl_unit,
+          required: false,
+        }
+      ],
+      where: { refno: refnoValue }
+    });
+
+    console.log(`พบรายการสินค้าทั้งหมด ${br_rfsDetails.length} รายการในใบรับสินค้าจาก Supplier เลขที่ ${refnoValue}`);
+
+    // แสดงข้อมูลตัวอย่างสำหรับการตรวจสอบ
+    if (br_rfsDetails.length > 0) {
+      console.log('ตัวอย่างข้อมูลสินค้าชิ้นแรก:', {
+        product_code: br_rfsDetails[0].product_code,
+        product_name: br_rfsDetails[0].tbl_product?.product_name || 'ไม่มี',
+        qty: br_rfsDetails[0].qty,
+        unit: br_rfsDetails[0].tbl_unit?.unit_name || br_rfsDetails[0].unit_code || 'ไม่มี'
+      });
+    }
+
+    // แปลงข้อมูลเป็น plain objects เพื่อป้องกันปัญหา
+    const result = br_rfsHeader.toJSON();
+
+    // ปรับแต่งข้อมูลรายการสินค้าและเติมข้อมูลที่หายไป
+    const processedDetails = br_rfsDetails.map(detail => {
+      const detailObj = detail.toJSON();
+
+      // ตรวจสอบและเติมข้อมูลที่หายไป
+      if (!detailObj.tbl_product) {
+        detailObj.tbl_product = { product_name: 'Product Description' };
+      }
+
+      if (!detailObj.tbl_unit) {
+        detailObj.tbl_unit = { unit_name: detailObj.unit_code || '' };
+      }
+
+      return detailObj;
+    });
+
+    // เพิ่มข้อมูลรายการสินค้าเข้าไปในผลลัพธ์
+    result.br_rfsdts = processedDetails;
+
+    // ส่งข้อมูลกลับ
+    res.status(200).json({
+      result: true,
+      data: result
+    });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: error });
+    console.error('Error in Br_rfsByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'ไม่สามารถดึงข้อมูลใบรับสินค้าจาก Supplier ได้',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 

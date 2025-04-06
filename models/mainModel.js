@@ -8,6 +8,7 @@ const sequelize = new Sequelize(
   {
     host: dbConfig.host,
     dialect: dbConfig.dialect,
+    logging: false,
     pool: {
       min: dbConfig.pool.min,
       max: dbConfig.pool.max,
@@ -322,6 +323,7 @@ db.Tbl_product.hasMany(db.Wh_rfsdt, {
   foreignKey: 'product_code',  // foreignKey ของ Type Product
   sourceKey: 'product_code', // sourceKey ของ Product
 });
+
 
 //ใบส่งสินค้าให้ครัวกลาง
 db.Wh_dpk.hasMany(db.Wh_dpkdt, {
@@ -1570,18 +1572,14 @@ db.Tbl_product.hasMany(db.Br_rfkdt, {
 });
 
 // ใบรับสินค้าจาก Supplier
-// *********************แก้ไขใหม่*********************
 db.Br_rfs.hasMany(db.Br_rfsdt, {
-  foreignKey: 'refno',  // foreignKey ของ Type Product
-  sourceKey: 'refno' // sourceKey ของ Product
-  // as: 'postoposdt'
+  foreignKey: 'refno',
+  sourceKey: 'refno'
 });
 
-// *********************แก้ไขใหม่*********************
 db.Br_rfsdt.belongsTo(db.Br_rfs, {
-  foreignKey: 'refno',  // foreignKey ของ Type Product
-  targetKey: 'refno' // targetKey ของ Product
-  // as: 'posdttopos'
+  foreignKey: 'refno',
+  targetKey: 'refno'
 });
 
 db.Br_rfs.belongsTo(db.User, {
@@ -1614,21 +1612,23 @@ db.Tbl_branch.hasMany(db.Br_rfs, {
 });
 
 db.Br_rfsdt.belongsTo(db.Tbl_unit, {
-  foreignKey: 'unit_code',  // foreignKey ของ Type Product
-  targetKey: 'unit_code', // sourceKey ของ Product
+  foreignKey: 'unit_code',
+  targetKey: 'unit_code'
 });
+
 db.Tbl_unit.hasMany(db.Br_rfsdt, {
-  foreignKey: 'unit_code',  // foreignKey ของ Type Product
-  sourceKey: 'unit_code', // sourceKey ของ Product
+  foreignKey: 'unit_code',
+  sourceKey: 'unit_code'
 });
 
 db.Br_rfsdt.belongsTo(db.Tbl_product, {
-  foreignKey: 'product_code',  // foreignKey ของ Type Product
-  targetKey: 'product_code', // sourceKey ของ Product
+  foreignKey: 'product_code',
+  targetKey: 'product_code'
 });
+
 db.Tbl_product.hasMany(db.Br_rfsdt, {
-  foreignKey: 'product_code',  // foreignKey ของ Type Product
-  sourceKey: 'product_code', // sourceKey ของ Product
+  foreignKey: 'product_code',
+  sourceKey: 'product_code'
 });
 
 // br_rtk relationships

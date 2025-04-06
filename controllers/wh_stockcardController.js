@@ -286,11 +286,7 @@ exports.deleteWh_stockcard = async (req, res) => {
     console.error(error);
     res.status(500).send({ message: error.message });
   }
-};
-
-
-// exports.Query_Wh_stockcard = async (req, res) => {
-//   try {
+};//   try {
 //     const { offset, limit, rdate, rdate1, rdate2, product_code, product_name, trdate, refno } = req.body;
 
 //     let whereClause = {};
@@ -378,16 +374,28 @@ exports.deleteWh_stockcard = async (req, res) => {
 
 exports.Query_Wh_stockcard = async (req, res) => {
   try {
-    const { offset, limit, rdate, rdate1, rdate2, product_code, product_name, trdate, refno } = req.body;
+    const { offset, limit, rdate, rdate1, rdate2, product_code, product_name, refno } = req.body;
+
+    console.log("Received request parameters:", req.body);
+    console.log("Date filter:", rdate);
 
     let whereClause = {};
 
+    // Handle date filtering
     if (rdate1 && rdate2) {
       whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
     } else if (rdate) {
+      // เพิ่ม console log เพื่อดูค่าวันที่
+      console.log("Filtering by date:", rdate);
       whereClause.rdate = rdate;
     }
 
+    // Add refno filter if provided
+    if (refno) {
+      whereClause.refno = refno;
+    }
+
+    // Apply product filter
     if (product_code) {
       whereClause.product_code = product_code;
     }
@@ -399,27 +407,19 @@ exports.Query_Wh_stockcard = async (req, res) => {
       };
     }
 
-    // First, get all records for this product to properly calculate balances
-    let productCodes = [];
+    console.log("Final SQL where clause:", JSON.stringify(whereClause));
 
-    if (product_code) {
-      productCodes.push(product_code);
-    } else if (product_name) {
-      // Find all product codes matching the product name
-      try {
-        const matchingProducts = await Tbl_product.findAll({
-          attributes: ['product_code'],
-          where: productWhereClause
-        });
-
-        productCodes = matchingProducts.map(product => product.product_code);
-      } catch (err) {
-        console.error('Error finding matching products:', err);
-        productCodes = [];
-      }
+    // ดึงข้อมูลแบบไม่มีเงื่อนไขวันที่ก่อน เพื่อเช็คว่ามีข้อมูลหรือไม่
+    if (rdate && Object.keys(whereClause).length === 1 && whereClause.rdate) {
+      console.log("Attempting query without date filter to check data existence");
+      const testQuery = await Wh_stockcardModel.findAll({
+        attributes: ['rdate'],
+        limit: 5,
+        raw: true
+      });
+      console.log("Test data sample dates:", testQuery.map(t => t.rdate));
     }
 
-    // Fetch the stockcard data
     const stockcardShow = await Wh_stockcardModel.findAll({
       attributes: [
         'product_code',
@@ -456,6 +456,8 @@ exports.Query_Wh_stockcard = async (req, res) => {
         }
       ],
       order: [
+        [{ model: Tbl_product }, 'typeproduct_code', 'ASC'],
+        [{ model: Tbl_product }, 'product_name', 'ASC'],
         ['trdate', 'ASC'],
         ['refno', 'ASC']
       ],
@@ -463,136 +465,13 @@ exports.Query_Wh_stockcard = async (req, res) => {
       limit: limit ? parseInt(limit) : 10
     });
 
-    // Convert to plain objects
-    const plainData = stockcardShow.map(item => item.get({ plain: true }));
+    console.log(`Found ${stockcardShow.length} records`);
 
-    // Group by product_code
-    const productGroups = {};
-    plainData.forEach(item => {
-      if (!item.product_code) return;
-
-      if (!productGroups[item.product_code]) {
-        productGroups[item.product_code] = [];
-      }
-      productGroups[item.product_code].push(item);
-    });
-
-    // Process each product group and recalculate balances
-    const transformedData = [];
-
-    // Check if we have any product groups
-    if (Object.keys(productGroups).length === 0) {
-      res.status(200).send({
-        result: true,
-        data: []
-      });
-      return;
-    }
-
-    // Process each product group
-    Object.keys(productGroups).forEach(productCode => {
-      const items = productGroups[productCode];
-
-      // Skip if no items for this product code
-      if (!items || items.length === 0) return;
-
-      // Sort by date and refno (to ensure chronological order)
-      items.sort((a, b) => {
-        const dateA = a.trdate ? new Date(a.trdate) : new Date(0);
-        const dateB = b.trdate ? new Date(b.trdate) : new Date(0);
-
-        if (dateA.getTime() === dateB.getTime()) {
-          return (a.refno || '').localeCompare(b.refno || '');
-        }
-        return dateA - dateB;
-      });
-
-      // Reset running balances for each product
-      let runningBalance = 0;
-      let runningBalanceAmount = 0;
-
-      // Process each record for this product
-      items.forEach((item, index) => {
-        try {
-          // Safe handling of all numeric values with proper defaults
-          const itemBeg1 = Number(item.beg1 || 0);
-          const itemIn1 = Number(item.in1 || 0);
-          const itemOut1 = Number(item.out1 || 0);
-          const itemUpd1 = Number(item.upd1 || 0);
-
-          // Calculate current transaction effect
-          const currentEffect = itemBeg1 + itemIn1 - itemOut1 + itemUpd1;
-
-          // Update running balances
-          runningBalance += currentEffect;
-
-          // Calculate monetary values
-          const uprice = Number(item.uprice || 0);
-          const currentEffectAmount =
-            (itemBeg1 * uprice) +
-            (itemIn1 * uprice) -
-            (itemOut1 * uprice) +
-            (itemUpd1 * uprice);
-
-          runningBalanceAmount += currentEffectAmount;
-
-          // Create a new item object with all required properties
-          const newItem = {
-            // Copy all original item properties
-            ...item,
-
-            // Override with recalculated balances
-            balance: runningBalance,
-            balance_amount: runningBalanceAmount,
-
-            // Add ID for frontend
-            id: (offset ? parseInt(offset) : 0) + transformedData.length + 1
-          };
-
-          transformedData.push(newItem);
-        } catch (err) {
-          console.error('Error processing item:', err);
-          // Skip this item if there's an error in processing
-        }
-      });
-    });
-
-    // Final sort if needed
-    try {
-      transformedData.sort((a, b) => {
-        // Get product info safely
-        const aProduct = a.Tbl_product || {};
-        const bProduct = b.Tbl_product || {};
-
-        // First by product type
-        const aType = aProduct.typeproduct_code || '';
-        const bType = bProduct.typeproduct_code || '';
-        if (aType !== bType) {
-          return aType.localeCompare(bType);
-        }
-
-        // Then by product name
-        const aName = aProduct.product_name || '';
-        const bName = bProduct.product_name || '';
-        if (aName !== bName) {
-          return aName.localeCompare(bName);
-        }
-
-        // Then by date
-        const dateA = a.trdate ? new Date(a.trdate) : new Date(0);
-        const dateB = b.trdate ? new Date(b.trdate) : new Date(0);
-
-        if (dateA.getTime() !== dateB.getTime()) {
-          return dateA - dateB;
-        }
-
-        // Finally by refno
-        return (a.refno || '').localeCompare(b.refno || '');
-      });
-    } catch (err) {
-      console.error('Error sorting data:', err);
-      // If sorting fails, just use unsorted data
-    }
+    // Important: Add display IDs without expecting them to be in database
+    const transformedData = stockcardShow.map((item, index) => ({
+      ...item.get({ plain: true }),
+      display_id: (offset ? parseInt(offset) : 0) + index + 1
+    }));
 
     res.status(200).send({
       result: true,
@@ -611,58 +490,54 @@ exports.Query_Wh_stockcard = async (req, res) => {
 exports.countWh_stockcard = async (req, res) => {
   try {
     const { rdate, rdate1, rdate2, product_name, refno } = req.body;
-    const { Op } = require("sequelize");
 
-    console.log("Count API request body:", req.body);
+    console.log("Count request parameters:", req.body);
 
     let whereClause = {};
 
-    // เรียงลำดับเงื่อนไขให้เหมือนกับ POS API
-    if (rdate) {
-      whereClause.rdate = rdate;
-    }
     if (rdate1 && rdate2) {
       whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    } else if (rdate) {
+      whereClause.rdate = rdate;
     }
+
     if (refno) {
       whereClause.refno = refno;
     }
 
-    console.log("Count where clause:", JSON.stringify(whereClause));
+    console.log("Count where clause:", whereClause);
 
-    // เตรียม include สำหรับการค้นหาตาม product_name
-    let includeOptions = [];
+    const countOptions = {
+      where: whereClause,
+      col: 'product_code'
+    };
+
     if (product_name) {
-      includeOptions.push({
+      countOptions.include = [{
         model: Tbl_product,
-        attributes: [],
         where: {
           product_name: {
             [Op.like]: `%${product_name}%`
           }
         },
         required: true
-      });
+      }];
     }
 
-    // ทำ count แบบเดียวกับ POS API (ไม่ใช้ distinct และ col)
-    const amount = await Wh_stockcardModel.count({
-      where: whereClause,
-      include: includeOptions.length > 0 ? includeOptions : undefined
-    });
+    const count = await Wh_stockcardModel.count(countOptions);
 
-    console.log("Count result:", amount);
+    console.log("Count result:", count);
 
     res.status(200).send({
       result: true,
-      data: amount
+      data: count
     });
 
   } catch (error) {
     console.error("Error in countWh_stockcard:", error);
     res.status(500).send({
       result: false,
-      message: error.message || "An error occurred while counting records"
+      message: error.message
     });
   }
 };

@@ -407,35 +407,126 @@ exports.Br_rfkAlljoindt = async (req, res) => {
 
 exports.Br_rfkByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    // ดึงค่า refno จาก request
+    let refnoValue = req.body.refno;
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+    }
 
-    const br_rfkShow = await br_rfkModel.findOne({
+    console.log('กำลังดึงข้อมูลใบรับสินค้าจากครัวเลขที่:', refnoValue);
+
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
+      });
+    }
+
+    // ดึงข้อมูลหลักของใบรับสินค้าจากครัว (header)
+    const br_rfkHeader = await br_rfkModel.findOne({
       include: [
         {
-          model: br_rfkdtModel,
-          include: [{
-            model: Tbl_product,
-            include: [
-              {
-                model: unitModel,
-                as: 'productUnit1',
-                required: true,
-              },
-              {
-                model: unitModel,
-                as: 'productUnit2',
-                required: true,
-              },
-            ],
-          }],
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
+          required: false
         },
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name', 'addr1', 'addr2', 'tel1'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
       ],
-      where: { refno: refno }
+      where: { refno: refnoValue }
     });
-    res.status(200).send({ result: true, data: br_rfkShow });
+
+    if (!br_rfkHeader) {
+      console.log('ไม่พบข้อมูลใบรับสินค้าจากครัวเลขที่:', refnoValue);
+      return res.status(404).json({
+        result: false,
+        message: 'ไม่พบข้อมูลใบรับสินค้าจากครัว'
+      });
+    }
+
+    // ดึงข้อมูลรายการสินค้า (details) แยกต่างหาก
+    const br_rfkDetails = await br_rfkdtModel.findAll({
+      include: [
+        {
+          model: Tbl_product,
+          include: [
+            {
+              model: unitModel,
+              as: 'productUnit1',
+              required: false,
+            },
+            {
+              model: unitModel,
+              as: 'productUnit2',
+              required: false,
+            }
+          ],
+          required: false
+        },
+        {
+          model: unitModel,
+          required: false,
+        }
+      ],
+      where: { refno: refnoValue }
+    });
+
+    console.log(`พบรายการสินค้าทั้งหมด ${br_rfkDetails.length} รายการในใบรับสินค้าจากครัวเลขที่ ${refnoValue}`);
+
+    // แสดงข้อมูลตัวอย่างสำหรับการตรวจสอบ
+    if (br_rfkDetails.length > 0) {
+      console.log('ตัวอย่างข้อมูลสินค้าชิ้นแรก:', {
+        product_code: br_rfkDetails[0].product_code,
+        product_name: br_rfkDetails[0].tbl_product?.product_name || 'ไม่มี',
+        qty: br_rfkDetails[0].qty,
+        unit: br_rfkDetails[0].tbl_unit?.unit_name || br_rfkDetails[0].unit_code || 'ไม่มี'
+      });
+    }
+
+    // แปลงข้อมูลเป็น plain objects เพื่อป้องกันปัญหา
+    const result = br_rfkHeader.toJSON();
+
+    // ปรับแต่งข้อมูลรายการสินค้าและเติมข้อมูลที่หายไป
+    const processedDetails = br_rfkDetails.map(detail => {
+      const detailObj = detail.toJSON();
+
+      // ตรวจสอบและเติมข้อมูลที่หายไป
+      if (!detailObj.tbl_product) {
+        detailObj.tbl_product = { product_name: 'Product Description' };
+      }
+
+      if (!detailObj.tbl_unit) {
+        detailObj.tbl_unit = { unit_name: detailObj.unit_code || '' };
+      }
+
+      return detailObj;
+    });
+
+    // เพิ่มข้อมูลรายการสินค้าเข้าไปในผลลัพธ์
+    result.br_rfkdts = processedDetails;
+
+    // ส่งข้อมูลกลับ
+    res.status(200).json({
+      result: true,
+      data: result
+    });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: error });
+    console.error('Error in Br_rfkByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'ไม่สามารถดึงข้อมูลใบรับสินค้าจากครัวได้',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 

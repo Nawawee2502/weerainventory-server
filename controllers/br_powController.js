@@ -464,36 +464,91 @@ exports.Br_powAlljoindt = async (req, res) => {
 
 exports.Br_powByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    let refnoValue = req.body.refno;
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+    }
 
-    const br_powShow = await Br_powModel.findOne({
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
+      });
+    }
+
+    // ดึงข้อมูลหลักก่อน
+    const br_powHeader = await Br_powModel.findOne({
       include: [
         {
-          model: Br_powdtModel,
-          include: [{
-            model: Tbl_product,
-            include: [
-              {
-                model: unitModel,
-                as: 'productUnit1',
-                required: true,
-              },
-              {
-                model: unitModel,
-                as: 'productUnit2',
-                required: true,
-              },
-            ],
-          }],
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name', 'addr1', 'addr2', 'tel1'],
+          required: false
         },
+        {
+          model: Tbl_supplier,
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
       ],
-      where: { refno }
+      where: { refno: refnoValue }
     });
 
-    res.status(200).send({ result: true, data: br_powShow });
+    if (!br_powHeader) {
+      return res.status(404).json({
+        result: false,
+        message: 'ไม่พบข้อมูลคำสั่งซื้อ'
+      });
+    }
+
+    // ดึงข้อมูลรายการสินค้าแยกต่างหาก
+    const br_powDetails = await Br_powdtModel.findAll({
+      include: [
+        {
+          model: Tbl_product,
+          include: [
+            {
+              model: unitModel,
+              as: 'productUnit1',
+              required: false,
+            },
+            {
+              model: unitModel,
+              as: 'productUnit2',
+              required: false,
+            }
+          ],
+          required: false
+        },
+        {
+          model: unitModel,
+          required: false,
+        }
+      ],
+      where: { refno: refnoValue }
+    });
+
+    console.log(`พบรายการสินค้าทั้งหมด ${br_powDetails.length} รายการ`);
+
+    // ผสมข้อมูลเข้าด้วยกัน
+    const result = br_powHeader.toJSON();
+    result.br_powdts = br_powDetails;
+
+    res.status(200).json({
+      result: true,
+      data: result
+    });
+
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).send({ message: error.message });
+    console.error('Error in Br_powByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'ไม่สามารถดึงข้อมูลคำสั่งซื้อได้'
+    });
   }
 };
 
@@ -668,6 +723,101 @@ exports.getPowByRefno = async (req, res) => {
   } catch (error) {
     console.error("Error in getPowByRefno:", error);
     res.status(500).send({
+      result: false,
+      message: error.message
+    });
+  }
+};
+
+exports.checkPowStatusForEdit = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // 1. ตรวจสอบว่า refno นี้มีอยู่ใน wh_dpb.refno1 หรือไม่
+    const wh_dpbRecord = await sequelize.models.wh_dpb.findOne({
+      where: { refno1: refno }
+    });
+
+    // ถ้าไม่มีการใช้ใน wh_dpb.refno1 แสดงว่ายังไม่ได้มีการเบิกจากคลังไปร้านอาหาร สามารถแก้ไขได้
+    if (!wh_dpbRecord) {
+      return res.status(200).send({
+        result: true,
+        canEdit: true,
+        message: 'This PO has not been dispatched yet, can be edited.'
+      });
+    }
+
+    // 2. ตรวจสอบสถานะของ PO นี้ว่าเป็น 'end' หรือไม่
+    const poRecord = await sequelize.models.br_pow.findOne({
+      where: { refno: refno },
+      attributes: ['refno', 'status']
+    });
+
+    if (!poRecord) {
+      return res.status(404).send({
+        result: false,
+        message: 'PO record not found'
+      });
+    }
+
+    const canEdit = poRecord.status !== 'end';
+
+    return res.status(200).send({
+      result: true,
+      canEdit: canEdit,
+      status: poRecord.status,
+      message: canEdit
+        ? 'This PO can still be edited.'
+        : 'This PO has been fully dispatched and cannot be edited.'
+    });
+
+  } catch (error) {
+    console.error("Error checking PO status for edit:", error);
+    return res.status(500).send({
+      result: false,
+      message: error.message
+    });
+  }
+};
+
+exports.checkPOUsedInDispatch = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // ตรวจสอบว่า refno นี้มีอยู่ใน wh_dpb.refno1 หรือไม่
+    const wh_dpbRecord = await sequelize.models.wh_dpb.findOne({
+      where: { refno1: refno }
+    });
+
+    // ถ้าไม่มีในตาราง wh_dpb.refno1 แสดงว่ายังไม่มีการเบิก สามารถแก้ไขได้
+    const canEdit = !wh_dpbRecord;
+
+    return res.status(200).send({
+      result: true,
+      canEdit: canEdit,
+      isUsed: !canEdit,
+      message: canEdit
+        ? 'This PO has not been used in dispatch yet, can be edited.'
+        : 'This PO has been used in dispatch and cannot be edited.'
+    });
+
+  } catch (error) {
+    console.error("Error checking PO used in dispatch:", error);
+    return res.status(500).send({
       result: false,
       message: error.message
     });

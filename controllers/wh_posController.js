@@ -501,13 +501,20 @@ exports.Wh_posAlljoindt = async (req, res) => {
   }
 };
 
-// *********************แก้ไขใหม่********************* 
 exports.Wh_posByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    const refno = req.params.refno || req.body.refno;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
 
     const wh_posShow = await wh_posModel.findOne({
       include: [
+        // ดึงข้อมูลรายการสินค้า
         {
           model: wh_posdtModel,
           include: [{
@@ -516,26 +523,60 @@ exports.Wh_posByRefno = async (req, res) => {
               {
                 model: unitModel,
                 as: 'productUnit1',
-                required: true,
+                required: false,
               },
               {
                 model: unitModel,
                 as: 'productUnit2',
-                required: true,
+                required: false,
               },
             ],
+          },
+          {
+            model: unitModel,
+            required: false,
           }],
-          // as: "postoposdt",
-          // required: true,
         },
+        // ดึงข้อมูล branch พร้อมที่อยู่และเบอร์โทร
+        {
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name', 'addr1', 'addr2', 'tel1'],
+          required: false,
+        },
+        // ดึงข้อมูล supplier
+        {
+          model: Tbl_supplier,
+          attributes: ['supplier_code', 'supplier_name'],
+          required: false,
+        },
+        // ดึงข้อมูล user
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false,
+        }
       ],
       where: { refno: refno }
-      // offset:offset,limit:limit 
     });
-    res.status(200).send({ result: true, data: wh_posShow })
+
+    if (!wh_posShow) {
+      return res.status(404).send({
+        result: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.status(200).send({
+      result: true,
+      data: wh_posShow
+    });
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    console.error("Error in Wh_posByRefno:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
