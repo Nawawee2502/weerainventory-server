@@ -214,8 +214,8 @@ exports.deleteproduct = async (req, res) => {
 exports.productAll = async (req, res) => {
   try {
     const { offset, limit } = req.body;
-    const productShow = await tbl_productModel.findAll({ 
-      offset: offset, 
+    const productShow = await tbl_productModel.findAll({
+      offset: offset,
       limit: limit,
       order: [['product_name', 'ASC']] // เรียงตามชื่อสินค้า A-Z
     });
@@ -392,9 +392,10 @@ exports.searchProductName = async (req, res) => {
         },
       ],
       where: {
-        product_name: {
-          [Op.like]: `%${product_name}%`
-        },
+        [Op.or]: [
+          { product_name: { [Op.like]: `%${product_name}%` } },
+          { product_code: { [Op.like]: `%${product_name}%` } }
+        ]
       },
       order: [['product_name', 'ASC']] // เรียงตามชื่อสินค้า A-Z
     });

@@ -346,7 +346,20 @@ exports.Kt_safAlljoindt = async (req, res) => {
 
 exports.Kt_safByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    // ดึงค่า refno จาก request
+    let refnoValue = req.body.refno;
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+    }
+
+    console.log('กำลังดึงข้อมูลใบปรับสต็อคเลขที่:', refnoValue);
+
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
+      });
+    }
 
     const Kt_safShow = await Kt_safModel.findOne({
       include: [
@@ -358,24 +371,38 @@ exports.Kt_safByRefno = async (req, res) => {
               {
                 model: unitModel,
                 as: 'productUnit1',
-                required: true,
+                required: false,
               },
               {
                 model: unitModel,
                 as: 'productUnit2',
-                required: true,
+                required: false,
               },
             ],
           }],
         },
+        {
+          model: Tbl_kitchen,
+          required: false
+        }
       ],
-      where: { refno }
+      where: { refno: refnoValue.toString() }
     });
 
-    res.status(200).send({ result: true, data: Kt_safShow });
+    if (!Kt_safShow) {
+      return res.status(404).json({
+        result: false,
+        message: 'ไม่พบข้อมูลใบปรับสต็อค'
+      });
+    }
+
+    res.status(200).json({ result: true, data: Kt_safShow });
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).send({ message: error.message });
+    console.error('Error in Kt_safByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'ไม่สามารถดึงข้อมูลใบปรับสต็อคได้'
+    });
   }
 };
 

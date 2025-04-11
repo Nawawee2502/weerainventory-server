@@ -140,7 +140,8 @@ const {
   Wh_dpkrefno,
   searchWh_dpkRunno,
   Wh_dpkByRefno,
-  getWhDpkByRefno
+  getWhDpkByRefno,
+  Wh_dpkUsedRefnos
 } = require("../controllers/wh_dpkController")
 
 const {
@@ -244,7 +245,9 @@ const {
   searchKt_powRunno,
   Kt_powByRefno,
   countKt_pow,
-  getKtPowByRefno
+  getKtPowByRefno,
+  checkKtPOUsedInDispatch,
+  checkKtPowStatusForEdit
 } = require("../controllers/kt_powController")
 
 const {
@@ -733,6 +736,7 @@ router.post("/Wh_dpkrefno", Wh_dpkrefno);
 router.post("/wh_dpkbyrefno", Wh_dpkByRefno);
 router.post("/searchWh_dpkRunno", searchWh_dpkRunno);
 router.post("/getWhDpkByRefno", getWhDpkByRefno);
+router.post("/wh-dpk-used-refnos", Wh_dpkUsedRefnos);
 
 
 router.post("/addWh_dpkdt", addWh_dpkdt);
@@ -820,6 +824,8 @@ router.post("/Kt_powbyrefno", Kt_powByRefno);
 router.post("/searchKt_powRunno", searchKt_powRunno);
 router.post("/countkt_pow", countKt_pow);
 router.post("/getKtPowByRefno", getKtPowByRefno);
+router.post("/checkKtPowStatusForEdit", checkKtPowStatusForEdit);
+router.post("/checkKtPOUsedInDispatch", checkKtPOUsedInDispatch);
 
 
 router.post("/addkt_powdt", addKt_powdt);

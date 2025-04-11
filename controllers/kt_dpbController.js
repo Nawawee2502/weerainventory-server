@@ -7,25 +7,22 @@ const {
   Tbl_kitchen,
   Tbl_branch,
   User,
-  Kt_stockcard
+  Kt_stockcard,
+  Br_rtk,
+  Br_rtkdt
 } = require("../models/mainModel");
 const { Op } = require("sequelize");
 
-
 exports.addKt_dpb = async (req, res) => {
   const t = await sequelize.transaction();
-
   try {
     const { headerData, productArrayData, footerData } = req.body;
-
     if (!headerData.refno || !headerData.kitchen_code || !headerData.branch_code) {
       throw new Error('Missing required fields in header data');
     }
-
     if (!Array.isArray(productArrayData) || productArrayData.length === 0) {
       throw new Error('Product data is required');
     }
-
     try {
       await Kt_dpbModel.create({
         refno: headerData.refno,
@@ -36,6 +33,7 @@ exports.addKt_dpb = async (req, res) => {
         monthh: headerData.monthh,
         myear: headerData.myear,
         user_code: headerData.user_code,
+        refno1: headerData.refno1 || null,
         taxable: headerData.taxable,
         nontaxable: headerData.nontaxable,
         total: footerData.total
@@ -96,6 +94,61 @@ exports.addKt_dpb = async (req, res) => {
         }, { transaction: t });
       }
 
+      if (headerData.refno1) {
+        const rtkRefno = headerData.refno1;
+        for (const item of productArrayData) {
+          const rtkdtItem = await Br_rtkdt.findOne({
+            where: {
+              refno: rtkRefno,
+              product_code: item.product_code
+            },
+            transaction: t
+          });
+
+          if (rtkdtItem) {
+            const currentQtySend = parseFloat(rtkdtItem.qty_send || 0);
+            const newQtySend = currentQtySend + parseFloat(item.qty || 0);
+            const totalQty = parseFloat(rtkdtItem.qty || 0);
+
+            await Br_rtkdt.update(
+              { qty_send: newQtySend },
+              {
+                where: {
+                  refno: rtkRefno,
+                  product_code: item.product_code
+                },
+                transaction: t
+              }
+            );
+
+            console.log(`Updated product ${item.product_code} qty_send from ${currentQtySend} to ${newQtySend} (total: ${totalQty})`);
+          }
+        }
+
+        const remainingItems = await Br_rtkdt.findAll({
+          attributes: ['product_code', 'qty', 'qty_send'],
+          where: { refno: rtkRefno },
+          transaction: t
+        });
+
+        const allItemsDispatched = remainingItems.every(item => {
+          const qty = parseFloat(item.qty || 0);
+          const qtySend = parseFloat(item.qty_send || 0);
+          return qtySend >= qty;
+        });
+
+        if (allItemsDispatched) {
+          await Br_rtk.update(
+            { status: 'end' },
+            {
+              where: { refno: rtkRefno },
+              transaction: t
+            }
+          );
+          console.log(`Updated RTK ${rtkRefno} status to 'end'`);
+        }
+      }
+
       await t.commit();
       res.status(200).json({
         result: true,
@@ -118,25 +171,18 @@ exports.addKt_dpb = async (req, res) => {
   }
 };
 
-
 exports.updateKt_dpb = async (req, res) => {
   const t = await sequelize.transaction();
-
   try {
     const updateData = req.body;
     console.log("Received update data:", updateData);
 
-    // Check if we have the new structure with headerData
     if (updateData.headerData) {
-      // We're receiving the new nested structure
       const { headerData, productArrayData, footerData } = updateData;
-
-      // Make sure we have a valid refno in headerData
       if (!headerData.refno) {
         throw new Error('Missing required refno in header data');
       }
 
-      // Update the header record
       const updateResult = await Kt_dpbModel.update(
         {
           rdate: headerData.rdate,
@@ -145,6 +191,7 @@ exports.updateKt_dpb = async (req, res) => {
           monthh: headerData.monthh,
           kitchen_code: headerData.kitchen_code,
           branch_code: headerData.branch_code,
+          refno1: headerData.refno1 || null,
           taxable: footerData.taxable || 0,
           nontaxable: footerData.nontaxable || 0,
           total: footerData.total || 0,
@@ -156,7 +203,6 @@ exports.updateKt_dpb = async (req, res) => {
         }
       );
 
-      // Delete existing detail records
       await Kt_dpbdtModel.destroy({
         where: { refno: headerData.refno },
         transaction: t
@@ -165,31 +211,49 @@ exports.updateKt_dpb = async (req, res) => {
       console.log("Deleted existing details, now inserting new products:",
         productArrayData ? productArrayData.length : "No products array");
 
-      // Insert new detail records
       if (productArrayData && productArrayData.length > 0) {
-        // Add a unique constraint check and potentially modify the data
         const productsToInsert = productArrayData.map((item, index) => ({
           ...item,
-          // Explicitly set the refno to ensure consistency
           refno: headerData.refno,
-          // Optional: Add a unique index to prevent conflicts
           uniqueIndex: `${headerData.refno}_${index}`
         }));
 
-        // Use upsert instead of bulkCreate to handle potential conflicts
         const insertPromises = productsToInsert.map(product =>
           Kt_dpbdtModel.upsert(product, {
             transaction: t,
-            // If you want to update existing records
             conflictFields: ['refno', 'product_code']
           })
         );
 
         await Promise.all(insertPromises);
       }
+
+      if (headerData.refno1) {
+        const rtkRefno = headerData.refno1;
+        const remainingItems = await Br_rtkdt.findAll({
+          attributes: ['product_code', 'qty', 'qty_send'],
+          where: { refno: rtkRefno },
+          transaction: t
+        });
+
+        const allItemsDispatched = remainingItems.every(item => {
+          const qty = parseFloat(item.qty || 0);
+          const qtySend = parseFloat(item.qty_send || 0);
+          return qtySend >= qty;
+        });
+
+        if (allItemsDispatched) {
+          await Br_rtk.update(
+            { status: 'end' },
+            {
+              where: { refno: rtkRefno },
+              transaction: t
+            }
+          );
+          console.log(`Updated RTK ${rtkRefno} status to 'end'`);
+        }
+      }
     } else {
-      // Legacy structure with direct properties - this should still work for backward compatibility
-      // First update the header record
       const updateResult = await Kt_dpbModel.update(
         {
           rdate: updateData.rdate,
@@ -198,6 +262,7 @@ exports.updateKt_dpb = async (req, res) => {
           monthh: updateData.monthh,
           kitchen_code: updateData.kitchen_code,
           branch_code: updateData.branch_code,
+          refno1: updateData.refno1 || null,
           taxable: updateData.taxable || 0,
           nontaxable: updateData.nontaxable || 0,
           total: updateData.total || 0,
@@ -209,7 +274,6 @@ exports.updateKt_dpb = async (req, res) => {
         }
       );
 
-      // Delete existing detail records so we can insert fresh ones
       await Kt_dpbdtModel.destroy({
         where: { refno: updateData.refno },
         transaction: t
@@ -218,22 +282,16 @@ exports.updateKt_dpb = async (req, res) => {
       console.log("Deleted existing details, now inserting new products:",
         updateData.productArrayData ? updateData.productArrayData.length : "No products array");
 
-      // Insert new detail records
       if (updateData.productArrayData && updateData.productArrayData.length > 0) {
-        // Add a unique constraint check and potentially modify the data
         const productsToInsert = updateData.productArrayData.map((item, index) => ({
           ...item,
-          // Explicitly set the refno to ensure consistency
           refno: updateData.refno,
-          // Optional: Add a unique index to prevent conflicts
           uniqueIndex: `${updateData.refno}_${index}`
         }));
 
-        // Use upsert instead of bulkCreate to handle potential conflicts
         const insertPromises = productsToInsert.map(product =>
           Kt_dpbdtModel.upsert(product, {
             transaction: t,
-            // If you want to update existing records
             conflictFields: ['refno', 'product_code']
           })
         );
@@ -258,7 +316,6 @@ exports.updateKt_dpb = async (req, res) => {
   }
 };
 
-
 exports.deleteKt_dpb = async (req, res) => {
   try {
     Kt_dpbModel.destroy(
@@ -269,7 +326,6 @@ exports.deleteKt_dpb = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-
 };
 
 exports.Kt_dpbAllrdate = async (req, res) => {
@@ -290,14 +346,12 @@ exports.Kt_dpbAllrdate = async (req, res) => {
         {
           model: Tbl_branch,
           attributes: ['branch_code', 'branch_name'],
-          // where: { supplier_name: {[Op.like]: '%'+(supplier_name)+'%',}},
           where: wherebranch,
           required: true,
         },
         {
           model: Tbl_kitchen,
           attributes: ['kitchen_code', 'kitchen_name'],
-          // where: { branch_name: {[Op.like]: '%'+(branch_name)+'%',}},
           where: wherekitchen,
           required: true,
         },
@@ -334,7 +388,7 @@ exports.Kt_dpbAlljoindt = async (req, res) => {
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'branch_code', 'kitchen_code', 'taxable', 'nontaxable',
-        'total', 'user_code', 'created_at'
+        'total', 'user_code', 'created_at', 'refno1'
       ],
       include: [
         {
@@ -416,24 +470,32 @@ exports.Kt_dpbAlljoindt = async (req, res) => {
 
 exports.Kt_dpbByRefno = async (req, res) => {
   try {
-    // ปรับวิธีการเข้าถึง refno
+    // ตรวจสอบและแปลงค่า refno ให้เป็น string
     let refnoValue = req.body.refno;
 
-    // ตรวจสอบว่า refno เป็น object หรือไม่
+    // เช็คว่า refno เป็น object หรือไม่ (กรณีที่ frontend ส่งค่าในรูปแบบ { refno: "BRRTK012504001" })
     if (typeof refnoValue === 'object' && refnoValue !== null) {
-      refnoValue = refnoValue.refno || '';
-      console.log('Extracted refno from object:', refnoValue);
+      if (refnoValue.refno && typeof refnoValue.refno === 'string') {
+        refnoValue = refnoValue.refno.trim();
+      } else {
+        return res.status(400).json({
+          result: false,
+          message: 'Invalid refno format'
+        });
+      }
+    }
+
+    // เช็คว่าเป็น string และไม่ใช่ค่าว่าง
+    if (typeof refnoValue !== 'string' || !refnoValue.trim()) {
+      return res.status(400).json({
+        result: false,
+        message: 'Refno is required and must be a string'
+      });
     }
 
     console.log('Processing refno:', refnoValue, 'Type:', typeof refnoValue);
 
-    if (!refnoValue) {
-      return res.status(400).json({
-        result: false,
-        message: 'Refno is required (not found or empty)'
-      });
-    }
-
+    // ดึงข้อมูลด้วย Refno ที่แปลงเป็น string แล้ว
     const Kt_dpbShow = await Kt_dpbModel.findOne({
       include: [
         {
@@ -463,7 +525,7 @@ exports.Kt_dpbByRefno = async (req, res) => {
           required: false
         }
       ],
-      where: { refno: refnoValue }
+      where: { refno: refnoValue.toString() }
     });
 
     if (!Kt_dpbShow) {
@@ -504,10 +566,8 @@ exports.countKt_dpb = async (req, res) => {
 
 exports.searchKt_dpbrefno = async (req, res) => {
   try {
-    // console.log( req.body.type_productname);
     const { Op } = require("sequelize");
     const { refno } = await req.body;
-    // console.log((typeproduct_name));
 
     const Kt_dpbShow = await Kt_dpbModel.findAll({
       where: {
@@ -524,7 +584,6 @@ exports.searchKt_dpbrefno = async (req, res) => {
   }
 };
 
-
 exports.Kt_dpbrefno = async (req, res) => {
   try {
     const { kitchen_code, date } = req.body;
@@ -533,16 +592,13 @@ exports.Kt_dpbrefno = async (req, res) => {
       throw new Error('Kitchen code is required');
     }
 
-    // Parse the date and format it as YYMM
     const formattedDate = date ? new Date(date) : new Date();
     const year = formattedDate.getFullYear().toString().slice(-2);
     const month = String(formattedDate.getMonth() + 1).padStart(2, '0');
     const dateStr = `${year}${month}`;
 
-    // Create the pattern for searching
     const pattern = `KTDPB${kitchen_code}${dateStr}%`;
 
-    // Find the latest reference number for this kitchen and month
     const refno = await Kt_dpbModel.findOne({
       where: {
         refno: {
@@ -552,7 +608,6 @@ exports.Kt_dpbrefno = async (req, res) => {
       order: [['refno', 'DESC']],
     });
 
-    // If no existing refno found, start with 001
     if (!refno) {
       const newRefno = `KTDPB${kitchen_code}${dateStr}001`;
       res.status(200).send({
@@ -562,7 +617,6 @@ exports.Kt_dpbrefno = async (req, res) => {
       return;
     }
 
-    // Extract and increment the running number
     const currentRunNo = parseInt(refno.refno.slice(-3));
     const nextRunNo = (currentRunNo + 1).toString().padStart(3, '0');
     const newRefno = `KTDPB${kitchen_code}${dateStr}${nextRunNo}`;
@@ -600,10 +654,7 @@ exports.searchKt_dpbRunno = async (req, res) => {
 
 exports.getKtDpbByRefno = async (req, res) => {
   try {
-    // Extract refno properly
     let refnoValue = req.body.refno;
-
-    // Handle if refno is an object (like in the error message)
     if (typeof refnoValue === 'object' && refnoValue !== null) {
       refnoValue = refnoValue.refno || '';
       console.log('Extracted refno from object:', refnoValue);
@@ -616,10 +667,9 @@ exports.getKtDpbByRefno = async (req, res) => {
       });
     }
 
-    // Now use the extracted string value in your query
     const orderData = await Kt_dpbModel.findOne({
       attributes: [
-        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'refno', 'rdate', 'trdate', 'myear', 'monthh', 'refno1',
         'kitchen_code', 'branch_code', 'taxable', 'nontaxable',
         'total', 'user_code', 'created_at'
       ],
@@ -641,7 +691,7 @@ exports.getKtDpbByRefno = async (req, res) => {
           required: false
         }
       ],
-      where: { refno: refnoValue } // Use the extracted value
+      where: { refno: refnoValue }
     });
 
     if (!orderData) {

@@ -1,8 +1,8 @@
-const Kt_powdtModel = require("../models/mainModel").Kt_powdt;
-const unitModel = require("../models/mainModel").Tbl_unit;
-const productModel = require("../models/mainModel").Tbl_product;
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
+const { Kt_powdt: Kt_powdtModel,
+  Kt_pow: Kt_powModel,
+  Tbl_unit: unitModel,
+  Tbl_product: productModel,
+  sequelize } = require("../models/mainModel");
 
 exports.addKt_powdt = async (req, res) => {
   try {
@@ -23,26 +23,123 @@ exports.addKt_powdt = async (req, res) => {
 };
 
 exports.updateKt_powdt = async (req, res) => {
+  const t = await sequelize.transaction();
+
   try {
-    Kt_powdtModel.update(
-      {
-        qty: req.body.qty,
-        uprice: req.body.uprice,
-        tax1: req.body.tax1,
-        unit_code: req.body.unit_code,
-        amt: req.body.amt,
+    console.log("Updating Kt_powdt with data:", req.body);
+
+    // Build the update object only with fields that are provided
+    const updateFields = {};
+    if (req.body.qty !== undefined) updateFields.qty = parseFloat(req.body.qty);
+    if (req.body.uprice !== undefined) updateFields.uprice = parseFloat(req.body.uprice);
+    if (req.body.tax1 !== undefined) updateFields.tax1 = req.body.tax1;
+    if (req.body.unit_code !== undefined) updateFields.unit_code = req.body.unit_code;
+    if (req.body.amt !== undefined) updateFields.amt = parseFloat(req.body.amt);
+
+    // Add qty_send field to the update, make sure it's a number
+    if (req.body.qty_send !== undefined) {
+      updateFields.qty_send = parseFloat(req.body.qty_send);
+      console.log(`Updating qty_send to ${updateFields.qty_send} for product ${req.body.product_code}`);
+    }
+
+    // Check if we have fields to update
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).send({
+        result: false,
+        message: "No fields to update provided"
+      });
+    }
+
+    // Get the current record to compare qty vs qty_send after update
+    const currentRecord = await Kt_powdtModel.findOne({
+      where: {
+        refno: req.body.refno,
+        product_code: req.body.product_code
       },
+      transaction: t
+    });
+
+    if (!currentRecord) {
+      await t.rollback();
+      return res.status(404).send({
+        result: false,
+        message: "Record not found"
+      });
+    }
+
+    // Store original qty for comparison
+    const originalQty = parseFloat(currentRecord.qty || 0);
+
+    // Calculate what the new qty_send will be
+    let newQtySend = parseFloat(currentRecord.qty_send || 0);
+    if (updateFields.qty_send !== undefined) {
+      newQtySend = updateFields.qty_send;
+    }
+
+    // Update the record
+    const result = await Kt_powdtModel.update(
+      updateFields,
       {
         where: {
           refno: req.body.refno,
           product_code: req.body.product_code
-        }
+        },
+        transaction: t
       }
     );
-    res.status(200).send({ result: true })
+
+    console.log("Update result:", result);
+
+    // Check if after the update, qty_send equals or exceeds qty
+    if (newQtySend >= originalQty) {
+      console.log(`Product ${req.body.product_code} has been fully dispatched (${newQtySend}/${originalQty}), removing from kt_powdt`);
+
+      // Delete this product record since qty_send = qty
+      await Kt_powdtModel.destroy({
+        where: {
+          refno: req.body.refno,
+          product_code: req.body.product_code
+        },
+        transaction: t
+      });
+
+      // Check if there are any remaining products for this refno
+      const remainingProducts = await Kt_powdtModel.count({
+        where: { refno: req.body.refno },
+        transaction: t
+      });
+
+      console.log(`Remaining products for ${req.body.refno}: ${remainingProducts}`);
+
+      // If no products remain, update the PO status to 'end'
+      if (remainingProducts === 0) {
+        console.log(`No products remain for PO ${req.body.refno}, updating status to 'end'`);
+        await Kt_powModel.update(
+          { status: 'end' },
+          {
+            where: { refno: req.body.refno },
+            transaction: t
+          }
+        );
+        console.log(`Updated PO ${req.body.refno} status to 'end'`);
+      }
+    }
+
+    await t.commit();
+
+    res.status(200).send({
+      result: true,
+      message: "Updated successfully",
+      updatedRows: result[0]
+    });
+
   } catch (error) {
-    console.log(error)
-    res.status(500).send({ message: error })
+    await t.rollback();
+    console.error("Error updating kt_powdt:", error);
+    res.status(500).send({
+      result: false,
+      message: error.message || "An error occurred while updating"
+    });
   }
 };
 
@@ -93,7 +190,23 @@ exports.countKt_powdt = async (req, res) => {
 
 exports.Kt_powdtAlljoindt = async (req, res) => {
   try {
-    const { refno } = req.body;
+    // Extract refno from request body, ensuring it's a string
+    let refnoValue = req.body.refno;
+
+    // Check if refno is an object and extract the string value if needed
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+      console.log('Extracted refno from object:', refnoValue);
+    }
+
+    console.log('Processing refno for detail query:', refnoValue, 'Type:', typeof refnoValue);
+
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'Refno is required (not found or empty)'
+      });
+    }
 
     const kt_powdtShow = await Kt_powdtModel.findAll({
       include: [
@@ -118,7 +231,7 @@ exports.Kt_powdtAlljoindt = async (req, res) => {
           required: false
         }
       ],
-      where: { refno: refno },
+      where: { refno: refnoValue },
       order: [['product_code', 'ASC']]
     });
 

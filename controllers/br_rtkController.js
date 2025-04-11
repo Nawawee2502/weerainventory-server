@@ -376,9 +376,32 @@ exports.Br_rtkAlljoindt = async (req, res) => {
 
 exports.Br_rtkByRefno = async (req, res) => {
     try {
-        const { refno } = req.body;
+        // ตรวจสอบและแปลงค่า refno ให้เป็น string
+        let refnoValue = req.body.refno;
 
-        const br_rtkShow = await Br_rtkModel.findOne({
+        // เช็คว่า refno เป็น object หรือไม่
+        if (typeof refnoValue === 'object' && refnoValue !== null) {
+            if (refnoValue.refno && typeof refnoValue.refno === 'string') {
+                refnoValue = refnoValue.refno.trim();
+            } else {
+                return res.status(400).json({
+                    result: false,
+                    message: 'Invalid refno format'
+                });
+            }
+        }
+
+        // เช็คว่าเป็น string และไม่ใช่ค่าว่าง
+        if (typeof refnoValue !== 'string' || !refnoValue.trim()) {
+            return res.status(400).json({
+                result: false,
+                message: 'Refno is required and must be a string'
+            });
+        }
+
+        console.log('Processing refno:', refnoValue, 'Type:', typeof refnoValue);
+
+        const Br_rtkShow = await Br_rtkModel.findOne({
             include: [
                 {
                     model: Br_rtkdtModel,
@@ -388,24 +411,48 @@ exports.Br_rtkByRefno = async (req, res) => {
                             {
                                 model: unitModel,
                                 as: 'productUnit1',
-                                required: true,
+                                required: false
                             },
                             {
                                 model: unitModel,
                                 as: 'productUnit2',
-                                required: true,
-                            },
-                        ],
-                    }],
+                                required: false
+                            }
+                        ]
+                    },
+                    {
+                        model: unitModel,
+                        required: false
+                    }]
                 },
+                {
+                    model: Tbl_kitchen,
+                    required: false
+                },
+                {
+                    model: Tbl_branch,
+                    required: false
+                }
             ],
-            where: { refno }
+            where: { refno: refnoValue.toString() }
         });
 
-        res.status(200).send({ result: true, data: br_rtkShow });
+        if (!Br_rtkShow) {
+            console.log('No data found for refno:', refnoValue);
+            return res.status(404).json({
+                result: false,
+                message: 'Return request not found'
+            });
+        }
+
+        res.status(200).json({ result: true, data: Br_rtkShow });
     } catch (error) {
-        console.error('Error:', error);
-        res.status(500).send({ message: error.message });
+        console.error('Error in Br_rtkByRefno:', error);
+        res.status(500).json({
+            result: false,
+            message: error.message || 'Failed to fetch return request details',
+            stack: error.stack
+        });
     }
 };
 

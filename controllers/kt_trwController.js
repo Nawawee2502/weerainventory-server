@@ -350,7 +350,20 @@ exports.Kt_trwAlljoindt = async (req, res) => {
 
 exports.Kt_trwByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    // ดึงค่า refno จาก request
+    let refnoValue = req.body.refno;
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+    }
+
+    console.log('กำลังดึงข้อมูลใบโอนเลขที่:', refnoValue);
+
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
+      });
+    }
 
     const Kt_trwShow = await Kt_trwModel.findOne({
       include: [
@@ -362,23 +375,38 @@ exports.Kt_trwByRefno = async (req, res) => {
               {
                 model: unitModel,
                 as: 'productUnit1',
-                required: true,
+                required: false,
               },
               {
                 model: unitModel,
                 as: 'productUnit2',
-                required: true,
+                required: false,
               },
             ],
           }],
         },
+        {
+          model: Tbl_kitchen,
+          required: false
+        }
       ],
-      where: { refno: refno }
+      where: { refno: refnoValue.toString() }
     });
-    res.status(200).send({ result: true, data: Kt_trwShow });
+
+    if (!Kt_trwShow) {
+      return res.status(404).json({
+        result: false,
+        message: 'ไม่พบข้อมูลใบโอน'
+      });
+    }
+
+    res.status(200).json({ result: true, data: Kt_trwShow });
   } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: error });
+    console.error('Error in Kt_trwByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'ไม่สามารถดึงข้อมูลใบโอนได้'
+    });
   }
 };
 

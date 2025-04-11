@@ -157,71 +157,71 @@ exports.updateWh_dpb = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    const updateData = req.body;
-    console.log("Received update data:", updateData);
+    const { headerData, productArrayData, footerData } = req.body;
+    console.log("Received update data:", { headerData, productArrayData, footerData });
+
+    // Validate that refno exists before proceeding
+    if (!headerData || !headerData.refno) {
+      await t.rollback();
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number (refno) is required for update'
+      });
+    }
 
     // First update the header record
     const updateResult = await wh_dpbModel.update(
       {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh,
-        branch_code: updateData.branch_code,
-        taxable: updateData.taxable || 0,
-        nontaxable: updateData.nontaxable || 0,
-        total: updateData.total || 0,
-        user_code: updateData.user_code,
-        refno1: updateData.refno1,
+        rdate: headerData.rdate,
+        trdate: headerData.trdate,
+        myear: headerData.myear,
+        monthh: headerData.monthh,
+        branch_code: headerData.branch_code,
+        taxable: headerData.taxable || 0,
+        nontaxable: headerData.nontaxable || 0,
+        total: headerData.total || 0,
+        user_code: headerData.user_code,
+        refno1: headerData.refno1,
       },
       {
-        where: { refno: updateData.refno },
+        where: { refno: headerData.refno },
         transaction: t
       }
     );
 
     // Delete existing detail records so we can insert fresh ones
     await wh_dpbdtModel.destroy({
-      where: { refno: updateData.refno },
+      where: { refno: headerData.refno },
       transaction: t
     });
 
     console.log("Deleted existing details, now inserting new products:",
-      updateData.productArrayData ? updateData.productArrayData.length : "No products array");
+      productArrayData ? productArrayData.length : "No products array");
 
     // Insert new detail records
-    if (updateData.productArrayData && updateData.productArrayData.length > 0) {
-      // Add a unique constraint check and potentially modify the data
-      const productsToInsert = updateData.productArrayData.map((item, index) => ({
+    if (productArrayData && productArrayData.length > 0) {
+      // Make sure all products have the correct refno
+      const productsToInsert = productArrayData.map(item => ({
         ...item,
-        // Explicitly set the refno to ensure consistency
-        refno: updateData.refno,
-        // Optional: Add a unique index to prevent conflicts
-        uniqueIndex: `${updateData.refno}_${index}`
+        refno: headerData.refno  // Ensure the refno is set correctly
       }));
 
-      // Use upsert instead of bulkCreate to handle potential conflicts
-      const insertPromises = productsToInsert.map(product =>
-        wh_dpbdtModel.upsert(product, {
-          transaction: t,
-          // If you want to update existing records
-          conflictFields: ['refno', 'product_code']
-        })
-      );
-
-      await Promise.all(insertPromises);
+      // Use bulkCreate for better performance
+      await wh_dpbdtModel.bulkCreate(productsToInsert, {
+        transaction: t
+      });
     }
 
     // Update stockcard if needed
     await Wh_stockcard.update(
       {
-        rdate: updateData.rdate,
-        trdate: updateData.trdate,
-        myear: updateData.myear,
-        monthh: updateData.monthh
+        rdate: headerData.rdate,
+        trdate: headerData.trdate,
+        myear: headerData.myear,
+        monthh: headerData.monthh
       },
       {
-        where: { refno: updateData.refno },
+        where: { refno: headerData.refno },
         transaction: t
       }
     );
@@ -303,7 +303,7 @@ exports.Wh_dpbAlljoindt = async (req, res) => {
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'branch_code', 'taxable', 'nontaxable',
-        'total', 'user_code', 'created_at'
+        'total', 'user_code', 'created_at', 'refno1'
       ],
       include: [
         {

@@ -342,7 +342,20 @@ exports.Kt_prfAlljoindt = async (req, res) => {
 
 exports.Kt_prfByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    // ดึงค่า refno จาก request
+    let refnoValue = req.body.refno;
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+    }
+
+    console.log('กำลังดึงข้อมูลใบรับเลขที่:', refnoValue);
+
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
+      });
+    }
 
     const Kt_prfShow = await Kt_prfModel.findOne({
       include: [
@@ -354,23 +367,38 @@ exports.Kt_prfByRefno = async (req, res) => {
               {
                 model: unitModel,
                 as: 'productUnit1',
-                required: true,
+                required: false,
               },
               {
                 model: unitModel,
                 as: 'productUnit2',
-                required: true,
+                required: false,
               },
             ],
           }],
         },
+        {
+          model: Tbl_kitchen,
+          required: false
+        }
       ],
-      where: { refno: refno }
+      where: { refno: refnoValue.toString() }
     });
-    res.status(200).send({ result: true, data: Kt_prfShow });
+
+    if (!Kt_prfShow) {
+      return res.status(404).json({
+        result: false,
+        message: 'ไม่พบข้อมูลใบรับ'
+      });
+    }
+
+    res.status(200).json({ result: true, data: Kt_prfShow });
   } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: error });
+    console.error('Error in Kt_prfByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'ไม่สามารถดึงข้อมูลใบรับได้'
+    });
   }
 };
 

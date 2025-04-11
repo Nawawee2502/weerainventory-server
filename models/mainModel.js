@@ -801,15 +801,15 @@ db.Tbl_product.hasMany(db.Kt_rfwdt, {
   sourceKey: 'product_code', // sourceKey ของ Product
 });
 
-db.Kt_rfw.belongsTo(db.Tbl_supplier, {
-  foreignKey: 'supplier_code',
-  targetKey: 'supplier_code'
-});
+// db.Kt_rfw.belongsTo(db.Tbl_supplier, {
+//   foreignKey: 'supplier_code',
+//   targetKey: 'supplier_code'
+// });
 
-db.Tbl_supplier.hasMany(db.Kt_rfw, {
-  foreignKey: 'supplier_code',
-  sourceKey: 'supplier_code'
-});
+// db.Tbl_supplier.hasMany(db.Kt_rfw, {
+//   foreignKey: 'supplier_code',
+//   sourceKey: 'supplier_code'
+// });
 
 // ใบเบิกสินค้า
 

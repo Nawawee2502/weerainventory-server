@@ -7,7 +7,9 @@ const {
   Wh_dpk: wh_dpkModel,
   Wh_dpkdt: wh_dpkdtModel,
   Wh_stockcard,
-  Wh_product_lotno
+  Wh_product_lotno,
+  Kt_powdt,
+  Kt_pow // Added Kt_pow model for updating status
 } = require("../models/mainModel");
 
 exports.addWh_dpk = async (req, res) => {
@@ -31,9 +33,10 @@ exports.addWh_dpk = async (req, res) => {
     }
 
     try {
-      // 1. สร้าง WH_DPK record
+      // 1. Create WH_DPK record with po_refno field
       await wh_dpkModel.create({
         refno: headerData.refno,
+        refno1: headerData.po_refno,    // Store the original PO refno in refno1
         rdate: headerData.rdate,
         kitchen_code: headerData.kitchen_code,
         trdate: headerData.trdate,
@@ -45,10 +48,15 @@ exports.addWh_dpk = async (req, res) => {
         total: footerData.total
       }, { transaction: t });
 
-      // 2. สร้าง detail records
+      // 2. Create detail records
       await wh_dpkdtModel.bulkCreate(productArrayData, { transaction: t });
 
-      // 3. สร้าง stockcard records และอัพเดท lotno
+      const poRefno = headerData.po_refno; // Use the original PO refno for Kt_powdt updates
+
+      // Flag to check if all items have been fully dispatched
+      let allItemsFullyDispatched = true;
+
+      // 3. Create stockcard records and update lotno
       for (const item of productArrayData) {
         const stockcardRecords = await Wh_stockcard.findAll({
           where: { product_code: item.product_code },
@@ -102,7 +110,7 @@ exports.addWh_dpk = async (req, res) => {
           balance_amount: previousBalanceAmount - outAmountValue
         }, { transaction: t });
 
-        // หา lotno ล่าสุดจาก wh_product_lotno
+        // Find last lotno from wh_product_lotno
         const lastLotno = await Wh_product_lotno.findOne({
           where: { product_code: item.product_code },
           order: [['lotno', 'DESC']],
@@ -112,7 +120,7 @@ exports.addWh_dpk = async (req, res) => {
 
         const newLotno = (lastLotno?.lotno || 0) + 1;
 
-        // อัพเดท lotno ในตาราง product
+        // Update lotno in product table
         await Tbl_product.update(
           { lotno: newLotno },
           {
@@ -121,7 +129,7 @@ exports.addWh_dpk = async (req, res) => {
           }
         );
 
-        // สร้าง product lotno record ใหม่
+        // Create new product lotno record
         await Wh_product_lotno.create({
           product_code: item.product_code,
           lotno: newLotno,
@@ -133,6 +141,73 @@ exports.addWh_dpk = async (req, res) => {
           rdate: headerData.rdate,
           ...(item.temperature1 && { temperature1: item.temperature1 })
         }, { transaction: t });
+
+        // Update the qty_send in kt_powdt if po_refno is provided
+        if (poRefno) {
+          try {
+            // First, get the current qty_send value
+            const powdtRecord = await Kt_powdt.findOne({
+              where: {
+                refno: poRefno,
+                product_code: item.product_code
+              },
+              transaction: t
+            });
+
+            if (powdtRecord) {
+              // Calculate the new qty_send by adding current dispatch quantity
+              const currentQtySent = parseFloat(powdtRecord.qty_send || 0);
+              const newQtySent = currentQtySent + parseFloat(item.qty || 0);
+              const originalQty = parseFloat(powdtRecord.qty || 0);
+
+              console.log(`Updating qty_send for product ${item.product_code} from ${currentQtySent} to ${newQtySent}`);
+
+              // Update the qty_send value
+              const updateResult = await Kt_powdt.update(
+                { qty_send: newQtySent },
+                {
+                  where: {
+                    refno: poRefno,
+                    product_code: item.product_code
+                  },
+                  transaction: t
+                }
+              );
+
+              console.log(`Update result for product ${item.product_code}: ${JSON.stringify(updateResult)}`);
+
+              // Check if this item is not fully dispatched
+              if (newQtySent < originalQty) {
+                allItemsFullyDispatched = false;
+                console.log(`Product ${item.product_code} not fully dispatched (${newQtySent}/${originalQty})`);
+              }
+            } else {
+              console.log(`No kt_powdt record found for refno: ${poRefno}, product: ${item.product_code}`);
+              // If we can't find a record, we can't determine if all items are dispatched,
+              // so conservatively set to false
+              allItemsFullyDispatched = false;
+            }
+          } catch (error) {
+            console.error(`Error updating qty_send for product ${item.product_code}:`, error);
+            throw error;
+          }
+        }
+      }
+
+      // If all items are fully dispatched and we have a valid PO refno,
+      // update the PO status to 'end'
+      if (poRefno && allItemsFullyDispatched) {
+        console.log(`All products for PO ${poRefno} have been fully dispatched, updating status to 'end'`);
+        await Kt_pow.update(
+          { status: 'end' },
+          {
+            where: { refno: poRefno },
+            transaction: t
+          }
+        );
+        console.log(`Updated PO ${poRefno} status to 'end'`);
+      } else if (poRefno) {
+        console.log(`Not all products for PO ${poRefno} have been fully dispatched, status remains unchanged`);
       }
 
       await t.commit();
@@ -157,7 +232,6 @@ exports.addWh_dpk = async (req, res) => {
   }
 };
 
-
 exports.Wh_dpkAlljoindt = async (req, res) => {
   try {
     const { offset, limit, rdate1, rdate2, kitchen_code, product_code } = req.body;
@@ -177,7 +251,7 @@ exports.Wh_dpkAlljoindt = async (req, res) => {
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'kitchen_code', 'taxable', 'nontaxable',
-        'total', 'user_code', 'created_at'
+        'total', 'user_code', 'created_at', 'refno1'
       ],
       include: [
         {
@@ -294,6 +368,7 @@ exports.updateWh_dpk = async (req, res) => {
         nontaxable: updateData.nontaxable || 0,
         total: updateData.total || 0,
         user_code: updateData.user_code,
+        refno1: updateData.refno1, // Update the PO reference
       },
       {
         where: { refno: updateData.refno },
@@ -364,7 +439,6 @@ exports.updateWh_dpk = async (req, res) => {
   }
 };
 
-
 exports.deleteWh_dpk = async (req, res) => {
   try {
     wh_dpkModel.destroy(
@@ -375,7 +449,6 @@ exports.deleteWh_dpk = async (req, res) => {
     console.log(error)
     res.status(500).send({ message: error })
   }
-
 };
 
 exports.Wh_dpkAllrdate = async (req, res) => {
@@ -383,16 +456,16 @@ exports.Wh_dpkAllrdate = async (req, res) => {
     const { offset, limit, rdate1, rdate2, kitchen_name } = req.body;
     const { Op } = require("sequelize");
 
-    const wherekitchen = { kitchen_name: { [Op.like]: '%', } };
-    if (kitchen_name)
-      wherekitchen = { $like: '%' + kitchen_name + '%' };
+    let wherekitchen = { kitchen_name: { [Op.like]: '%' } };
+    if (kitchen_name) {
+      wherekitchen = { kitchen_name: { [Op.like]: `%${kitchen_name}%` } };
+    }
 
     const Wh_dpkShow = await wh_dpkModel.findAll({
       include: [
         {
           model: Tbl_kitchen,
           attributes: ['kitchen_code', 'kitchen_name'],
-          // where: { supplier_name: {[Op.like]: '%'+(supplier_name)+'%',}},
           where: wherekitchen,
           required: true,
         },
@@ -408,22 +481,22 @@ exports.Wh_dpkAllrdate = async (req, res) => {
 
 exports.Wh_dpkByRefno = async (req, res) => {
   try {
-    // ดึงค่า refno จาก request
+    // Extract refno from request
     let refnoValue = req.body.refno;
     if (typeof refnoValue === 'object' && refnoValue !== null) {
       refnoValue = refnoValue.refno || '';
     }
 
-    console.log('กำลังดึงข้อมูลใบเบิกครัวเลขที่:', refnoValue);
+    console.log('Fetching kitchen dispatch with refno:', refnoValue);
 
     if (!refnoValue) {
       return res.status(400).json({
         result: false,
-        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
+        message: 'Reference number is required'
       });
     }
 
-    // ดึงข้อมูลหลักของใบเบิกครัว (header)
+    // Get header data
     const wh_dpkHeader = await wh_dpkModel.findOne({
       include: [
         {
@@ -442,14 +515,14 @@ exports.Wh_dpkByRefno = async (req, res) => {
     });
 
     if (!wh_dpkHeader) {
-      console.log('ไม่พบข้อมูลใบเบิกครัวเลขที่:', refnoValue);
+      console.log('Kitchen dispatch not found:', refnoValue);
       return res.status(404).json({
         result: false,
-        message: 'ไม่พบข้อมูลใบเบิกครัว'
+        message: 'Kitchen dispatch not found'
       });
     }
 
-    // ดึงข้อมูลรายการสินค้า (details) แยกต่างหาก
+    // Get detail data
     const wh_dpkDetails = await wh_dpkdtModel.findAll({
       include: [
         {
@@ -476,26 +549,26 @@ exports.Wh_dpkByRefno = async (req, res) => {
       where: { refno: refnoValue }
     });
 
-    console.log(`พบรายการสินค้าทั้งหมด ${wh_dpkDetails.length} รายการในใบเบิกครัวเลขที่ ${refnoValue}`);
+    console.log(`Found ${wh_dpkDetails.length} product items in kitchen dispatch ${refnoValue}`);
 
-    // แสดงข้อมูลตัวอย่างสำหรับการตรวจสอบ
+    // Example data for debugging
     if (wh_dpkDetails.length > 0) {
-      console.log('ตัวอย่างข้อมูลสินค้าชิ้นแรก:', {
+      console.log('Sample product data:', {
         product_code: wh_dpkDetails[0].product_code,
-        product_name: wh_dpkDetails[0].tbl_product?.product_name || 'ไม่มี',
+        product_name: wh_dpkDetails[0].tbl_product?.product_name || 'N/A',
         qty: wh_dpkDetails[0].qty,
-        unit: wh_dpkDetails[0].tbl_unit?.unit_name || wh_dpkDetails[0].unit_code || 'ไม่มี'
+        unit: wh_dpkDetails[0].tbl_unit?.unit_name || wh_dpkDetails[0].unit_code || 'N/A'
       });
     }
 
-    // แปลงข้อมูลเป็น plain objects เพื่อป้องกันปัญหา
+    // Convert to plain objects
     const result = wh_dpkHeader.toJSON();
 
-    // ปรับแต่งข้อมูลรายการสินค้าและเติมข้อมูลที่หายไป
+    // Process detail data and fill missing information
     const processedDetails = wh_dpkDetails.map(detail => {
       const detailObj = detail.toJSON();
 
-      // ตรวจสอบและเติมข้อมูลที่หายไป
+      // Fill in missing data
       if (!detailObj.tbl_product) {
         detailObj.tbl_product = { product_name: 'Product Description' };
       }
@@ -507,10 +580,10 @@ exports.Wh_dpkByRefno = async (req, res) => {
       return detailObj;
     });
 
-    // เพิ่มข้อมูลรายการสินค้าเข้าไปในผลลัพธ์
+    // Add details to result
     result.wh_dpkdts = processedDetails;
 
-    // ส่งข้อมูลกลับ
+    // Send response
     res.status(200).json({
       result: true,
       data: result
@@ -520,7 +593,7 @@ exports.Wh_dpkByRefno = async (req, res) => {
     console.error('Error in Wh_dpkByRefno:', error);
     res.status(500).json({
       result: false,
-      message: error.message || 'ไม่สามารถดึงข้อมูลใบเบิกครัวได้',
+      message: error.message || 'Could not fetch kitchen dispatch data',
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
@@ -528,10 +601,8 @@ exports.Wh_dpkByRefno = async (req, res) => {
 
 exports.searchWh_dpkrefno = async (req, res) => {
   try {
-    // console.log( req.body.type_productname);
     const { Op } = require("sequelize");
-    const { refno } = await req.body;
-    // console.log((typeproduct_name));
+    const { refno } = req.body;
 
     const Wh_dpkShow = await wh_dpkModel.findAll({
       where: {
@@ -550,15 +621,29 @@ exports.searchWh_dpkrefno = async (req, res) => {
 
 exports.Wh_dpkrefno = async (req, res) => {
   try {
+    const { month, year } = req.body;
+
+    if (!month || !year) {
+      return res.status(400).send({
+        result: false,
+        message: "Month and year parameters are required"
+      });
+    }
+
     const refno = await wh_dpkModel.findOne({
+      where: {
+        monthh: month,
+        myear: `20${year}`
+      },
       order: [['refno', 'DESC']],
     });
-    res.status(200).send({ result: true, data: refno })
+
+    res.status(200).send({ result: true, data: refno });
   } catch (error) {
     console.log(error)
     res.status(500).send({ message: error })
   }
-}
+};
 
 exports.searchWh_dpkRunno = async (req, res) => {
   try {
@@ -591,7 +676,7 @@ exports.getWhDpkByRefno = async (req, res) => {
     // Fetch the specific record by refno
     const orderData = await wh_dpkModel.findOne({
       attributes: [
-        'refno', 'rdate', 'trdate', 'myear', 'monthh',
+        'refno', 'refno1', 'rdate', 'trdate', 'myear', 'monthh',
         'kitchen_code', 'taxable', 'nontaxable',
         'total', 'user_code', 'created_at'
       ],
@@ -628,6 +713,33 @@ exports.getWhDpkByRefno = async (req, res) => {
     res.status(500).send({
       result: false,
       message: error.message
+    });
+  }
+};
+
+// Add a method to find used kitchen PO reference numbers similar to Wh_dpbUsedRefnos
+exports.Wh_dpkUsedRefnos = async (req, res) => {
+  try {
+    // Get all POs that have status 'end'
+    const completedPOs = await Kt_pow.findAll({
+      attributes: ['refno'],
+      where: { status: 'end' },
+      raw: true
+    });
+
+    const completedRefnos = completedPOs.map(po => po.refno);
+    console.log(`Found ${completedRefnos.length} completed kitchen POs with status 'end'`);
+
+    return res.status(200).json({
+      result: true,
+      data: completedRefnos
+    });
+  } catch (error) {
+    console.error("Error fetching completed kitchen refnos:", error);
+    return res.status(500).json({
+      result: false,
+      message: error.message || "Server error",
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 };

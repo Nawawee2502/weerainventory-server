@@ -23,6 +23,9 @@ module.exports = (sequelize, DataTypes) => {
             amt: {
                 type: DataTypes.DOUBLE(12, 2),
             },
+            qty_send: {
+                type: DataTypes.DOUBLE(12, 2),
+            },
         },
         {
             freezeTableName: true,

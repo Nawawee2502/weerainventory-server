@@ -24,6 +24,7 @@ exports.addKt_pow = async (req, res) => {
     }
 
     try {
+      // Create with 'active' status for new POs
       await Kt_powModel.create({
         refno: headerData.refno,
         rdate: headerData.rdate,
@@ -34,7 +35,8 @@ exports.addKt_pow = async (req, res) => {
         user_code: headerData.user_code,
         taxable: headerData.taxable,
         nontaxable: headerData.nontaxable,
-        total: footerData.total
+        total: footerData.total,
+        status: 'working' // Add status field
       }, { transaction: t });
 
       console.log("Create details:", productArrayData);
@@ -148,7 +150,8 @@ exports.updateKt_pow = async (req, res) => {
         taxable: headerData.taxable || 0,
         nontaxable: headerData.nontaxable || 0,
         total: footerData?.total || headerData.total || 0,
-        user_code: headerData.user_code
+        user_code: headerData.user_code,
+        // Don't update status here as it might have been modified by dispatches
       },
       {
         where: { refno: headerData.refno },
@@ -289,7 +292,8 @@ exports.Kt_powAllrdate = async (req, res) => {
       attributes: {
         include: [
           'balance',
-          'balance_amount'
+          'balance_amount',
+          'status' // Include status in response
         ]
       }
     });
@@ -312,23 +316,29 @@ exports.Kt_powAlljoindt = async (req, res) => {
 
     let whereClause = {};
 
-    if (rdate) {
-      whereClause.rdate = rdate;
-    }
+    if (rdate) whereClause.rdate = rdate;
+    if (rdate1 && rdate2) whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    if (kitchen_code) whereClause.kitchen_code = kitchen_code;
 
+    // Only run the count query if we're doing a date range search
+    let totalCount = 0;
     if (rdate1 && rdate2) {
-      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+      const totalResult = await sequelize.query(
+        'SELECT COUNT(refno) as count FROM kt_pow WHERE trdate BETWEEN ? AND ?',
+        {
+          replacements: [rdate1, rdate2],
+          type: sequelize.QueryTypes.SELECT
+        }
+      );
+      totalCount = totalResult[0].count;
     }
 
-    if (kitchen_code) {
-      whereClause.kitchen_code = kitchen_code;
-    }
-
-    let kt_pow_headers = await Kt_powModel.findAll({
+    // ดึงเฉพาะข้อมูลส่วนหัว ไม่ต้อง Join กับรายละเอียด (เหมือนใน Br_powAlljoindt)
+    const kt_pow_headers = await Kt_powModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'kitchen_code', 'taxable', 'nontaxable',
-        'total', 'user_code', 'created_at'
+        'total', 'user_code', 'created_at', 'status'
       ],
       include: [
         {
@@ -341,85 +351,107 @@ exports.Kt_powAlljoindt = async (req, res) => {
           as: 'user',
           attributes: ['user_code', 'username'],
           required: false
-        },
-        {
-          model: Kt_powdtModel,
-          required: false,
-          include: [
-            {
-              model: Tbl_product,
-              attributes: ['product_code', 'product_name'],
-              required: false,
-              where: product_code ? {
-                product_name: { [Op.like]: `%${product_code}%` }
-              } : {}
-            },
-            {
-              model: unitModel,
-              attributes: ['unit_code', 'unit_name'],
-              required: false
-            }
-          ]
         }
       ],
       where: whereClause,
       order: [['refno', 'ASC']],
-      offset,
-      limit
-    });
-
-    // Transform data to include detail information
-    kt_pow_headers = kt_pow_headers.map(header => {
-      const headerData = header.toJSON();
-      headerData.kt_powdts = header.kt_powdts || [];
-      return headerData;
+      offset: parseInt(offset) || 0,
+      limit: parseInt(limit) || 10
     });
 
     res.status(200).send({
       result: true,
-      data: kt_pow_headers
+      data: kt_pow_headers,
+      total: totalCount
     });
 
   } catch (error) {
     console.error("Error in Kt_powAlljoindt:", error);
-    res.status(500).send({ message: error.message });
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
 exports.Kt_powByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    let refnoValue = req.body.refno;
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+    }
 
-    const kt_powShow = await Kt_powModel.findOne({
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
+      });
+    }
+
+    // ดึงข้อมูลหลัก (header)
+    const kt_powHeader = await Kt_powModel.findOne({
+      where: { refno: refnoValue },
       include: [
         {
-          model: Kt_powdtModel,
-          include: [{
-            model: Tbl_product,
-            include: [
-              {
-                model: unitModel,
-                as: 'productUnit1',
-                required: true,
-              },
-              {
-                model: unitModel,
-                as: 'productUnit2',
-                required: true,
-              },
-            ],
-          }],
-        },
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
+          required: false
+        }
       ],
-      where: { refno }
+      attributes: {
+        include: ['status']
+      }
     });
 
-    res.status(200).send({ result: true, data: kt_powShow });
+    if (!kt_powHeader) {
+      return res.status(404).json({
+        result: false,
+        message: 'ไม่พบข้อมูลใบเบิก'
+      });
+    }
+
+    // ดึงข้อมูลรายการสินค้า (detail)
+    const kt_powDetails = await Kt_powdtModel.findAll({
+      where: { refno: refnoValue },
+      include: [
+        {
+          model: Tbl_product,
+          include: [
+            {
+              model: unitModel,
+              as: 'productUnit1',
+              required: true,
+            },
+            {
+              model: unitModel,
+              as: 'productUnit2',
+              required: true,
+            },
+          ],
+          required: true
+        }
+      ]
+    });
+
+    console.log(`พบรายการเบิกทั้งหมด ${kt_powDetails.length} รายการ`);
+
+    const result = kt_powHeader.toJSON();
+    result.kt_powdts = kt_powDetails;
+
+    res.status(200).json({
+      result: true,
+      data: result
+    });
+
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).send({ message: error.message });
+    console.error('Error in Kt_powByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'ไม่สามารถดึงข้อมูลใบเบิกได้'
+    });
   }
 };
+
 
 exports.countKt_pow = async (req, res) => {
   try {
@@ -554,7 +586,7 @@ exports.getKtPowByRefno = async (req, res) => {
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'kitchen_code', 'taxable', 'nontaxable',
-        'total', 'user_code', 'created_at'
+        'total', 'user_code', 'created_at', 'status' // Include status field
       ],
       include: [
         {
@@ -587,6 +619,102 @@ exports.getKtPowByRefno = async (req, res) => {
   } catch (error) {
     console.error("Error in getPowByRefno:", error);
     res.status(500).send({
+      result: false,
+      message: error.message
+    });
+  }
+};
+
+// Add methods for checking PO status
+exports.checkKtPowStatusForEdit = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // 1. Check if refno exists in wh_dpk.refno1
+    const wh_dpkRecord = await sequelize.models.wh_dpk.findOne({
+      where: { refno1: refno }
+    });
+
+    // If no dispatch has been made, it can be edited
+    if (!wh_dpkRecord) {
+      return res.status(200).send({
+        result: true,
+        canEdit: true,
+        message: 'This PO has not been dispatched yet, can be edited.'
+      });
+    }
+
+    // 2. Check the status of this PO
+    const poRecord = await Kt_powModel.findOne({
+      where: { refno: refno },
+      attributes: ['refno', 'status']
+    });
+
+    if (!poRecord) {
+      return res.status(404).send({
+        result: false,
+        message: 'PO record not found'
+      });
+    }
+
+    const canEdit = poRecord.status !== 'end';
+
+    return res.status(200).send({
+      result: true,
+      canEdit: canEdit,
+      status: poRecord.status,
+      message: canEdit
+        ? 'This PO can still be edited.'
+        : 'This PO has been fully dispatched and cannot be edited.'
+    });
+
+  } catch (error) {
+    console.error("Error checking PO status for edit:", error);
+    return res.status(500).send({
+      result: false,
+      message: error.message
+    });
+  }
+};
+
+exports.checkKtPOUsedInDispatch = async (req, res) => {
+  try {
+    const { refno } = req.body;
+
+    if (!refno) {
+      return res.status(400).send({
+        result: false,
+        message: 'Reference number is required'
+      });
+    }
+
+    // Check if refno exists in wh_dpk.refno1
+    const wh_dpkRecord = await sequelize.models.wh_dpk.findOne({
+      where: { refno1: refno }
+    });
+
+    // If no dispatch has been made, it can be edited
+    const canEdit = !wh_dpkRecord;
+
+    return res.status(200).send({
+      result: true,
+      canEdit: canEdit,
+      isUsed: !canEdit,
+      message: canEdit
+        ? 'This PO has not been used in dispatch yet, can be edited.'
+        : 'This PO has been used in dispatch and cannot be edited.'
+    });
+
+  } catch (error) {
+    console.error("Error checking PO used in dispatch:", error);
+    return res.status(500).send({
       result: false,
       message: error.message
     });

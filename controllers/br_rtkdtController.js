@@ -93,7 +93,30 @@ exports.countBr_rtkdt = async (req, res) => {
 
 exports.Br_rtkdtAlljoindt = async (req, res) => {
     try {
-        const { refno } = req.body;
+        // ตรวจสอบและแปลงค่า refno ให้เป็น string
+        let refnoValue = req.body.refno;
+
+        // เช็คว่า refno เป็น object หรือไม่
+        if (typeof refnoValue === 'object' && refnoValue !== null) {
+            if (refnoValue.refno && typeof refnoValue.refno === 'string') {
+                refnoValue = refnoValue.refno.trim();
+            } else {
+                return res.status(400).json({
+                    result: false,
+                    message: 'Invalid refno format'
+                });
+            }
+        }
+
+        // เช็คว่าเป็น string และไม่ใช่ค่าว่าง
+        if (typeof refnoValue !== 'string' || !refnoValue.trim()) {
+            return res.status(400).json({
+                result: false,
+                message: 'Refno is required and must be a string'
+            });
+        }
+
+        console.log('Processing refno for detail query:', refnoValue, 'Type:', typeof refnoValue);
 
         const br_rtkdtShow = await Br_rtkdtModel.findAll({
             include: [
@@ -118,7 +141,7 @@ exports.Br_rtkdtAlljoindt = async (req, res) => {
                     required: false
                 }
             ],
-            where: { refno: refno },
+            where: { refno: refnoValue.toString() },
             order: [['product_code', 'ASC']]
         });
 

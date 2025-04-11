@@ -393,8 +393,22 @@ exports.Kt_grfAlljoindt = async (req, res) => {
 
 exports.Kt_grfByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    // ดึงค่า refno จาก request
+    let refnoValue = req.body.refno;
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+    }
 
+    console.log('กำลังดึงข้อมูลใบเบิกสินค้าจากครัวเลขที่:', refnoValue);
+
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
+      });
+    }
+
+    // ดึงข้อมูลหลักของใบเบิกสินค้าจากครัว (header)
     const Kt_grfShow = await Kt_grfModel.findOne({
       include: [
         {
@@ -405,23 +419,40 @@ exports.Kt_grfByRefno = async (req, res) => {
               {
                 model: unitModel,
                 as: 'productUnit1',
-                required: true,
+                required: false,
               },
               {
                 model: unitModel,
                 as: 'productUnit2',
-                required: true,
+                required: false,
               },
             ],
           }],
         },
+        {
+          model: Tbl_kitchen,
+          required: false
+        },
       ],
-      where: { refno: refno }
+      where: { refno: refnoValue.toString() }
     });
-    res.status(200).send({ result: true, data: Kt_grfShow });
+
+    if (!Kt_grfShow) {
+      console.log('ไม่พบข้อมูลใบเบิกสินค้าจากครัวเลขที่:', refnoValue);
+      return res.status(404).json({
+        result: false,
+        message: 'ไม่พบข้อมูลใบเบิกสินค้าจากครัว'
+      });
+    }
+
+    res.status(200).json({ result: true, data: Kt_grfShow });
   } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: error });
+    console.error('Error in Kt_grfByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'ไม่สามารถดึงข้อมูลใบเบิกสินค้าจากครัวได้',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 

@@ -346,36 +346,121 @@ exports.Br_safAlljoindt = async (req, res) => {
 
 exports.Br_safByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    // ดึงค่า refno จาก request
+    let refnoValue = req.body.refno;
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+    }
 
-    const Br_safShow = await Br_safModel.findOne({
+    console.log('กำลังดึงข้อมูลใบปรับปรุงสินค้าเลขที่:', refnoValue);
+
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
+      });
+    }
+
+    // ดึงข้อมูลหลักของใบปรับปรุงสินค้า (header)
+    const br_safHeader = await Br_safModel.findOne({
       include: [
         {
-          model: Br_safdtModel,
-          include: [{
-            model: Tbl_product,
-            include: [
-              {
-                model: unitModel,
-                as: 'productUnit1',
-                required: true,
-              },
-              {
-                model: unitModel,
-                as: 'productUnit2',
-                required: true,
-              },
-            ],
-          }],
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name', 'addr1', 'addr2', 'tel1'],
+          required: false
         },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
       ],
-      where: { refno }
+      where: { refno: refnoValue }
     });
 
-    res.status(200).send({ result: true, data: Br_safShow });
+    if (!br_safHeader) {
+      console.log('ไม่พบข้อมูลใบปรับปรุงสินค้าเลขที่:', refnoValue);
+      return res.status(404).json({
+        result: false,
+        message: 'ไม่พบข้อมูลใบปรับปรุงสินค้า'
+      });
+    }
+
+    // ดึงข้อมูลรายการสินค้า (details) แยกต่างหาก
+    const br_safDetails = await Br_safdtModel.findAll({
+      include: [
+        {
+          model: Tbl_product,
+          include: [
+            {
+              model: unitModel,
+              as: 'productUnit1',
+              required: false,
+            },
+            {
+              model: unitModel,
+              as: 'productUnit2',
+              required: false,
+            }
+          ],
+          required: false
+        },
+        {
+          model: unitModel,
+          required: false,
+        }
+      ],
+      where: { refno: refnoValue }
+    });
+
+    console.log(`พบรายการสินค้าทั้งหมด ${br_safDetails.length} รายการในใบปรับปรุงสินค้าเลขที่ ${refnoValue}`);
+
+    // แสดงข้อมูลตัวอย่างสำหรับการตรวจสอบ
+    if (br_safDetails.length > 0) {
+      console.log('ตัวอย่างข้อมูลสินค้าชิ้นแรก:', {
+        product_code: br_safDetails[0].product_code,
+        product_name: br_safDetails[0].tbl_product?.product_name || 'ไม่มี',
+        qty: br_safDetails[0].qty,
+        unit: br_safDetails[0].tbl_unit?.unit_name || br_safDetails[0].unit_code || 'ไม่มี'
+      });
+    }
+
+    // แปลงข้อมูลเป็น plain objects เพื่อป้องกันปัญหา
+    const result = br_safHeader.toJSON();
+
+    // ปรับแต่งข้อมูลรายการสินค้าและเติมข้อมูลที่หายไป
+    const processedDetails = br_safDetails.map(detail => {
+      const detailObj = detail.toJSON();
+
+      // ตรวจสอบและเติมข้อมูลที่หายไป
+      if (!detailObj.tbl_product) {
+        detailObj.tbl_product = { product_name: 'Product Description' };
+      }
+
+      if (!detailObj.tbl_unit) {
+        detailObj.tbl_unit = { unit_name: detailObj.unit_code || '' };
+      }
+
+      return detailObj;
+    });
+
+    // เพิ่มข้อมูลรายการสินค้าเข้าไปในผลลัพธ์
+    result.br_safdts = processedDetails;
+
+    // ส่งข้อมูลกลับ
+    res.status(200).json({
+      result: true,
+      data: result
+    });
+
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).send({ message: error.message });
+    console.error('Error in Br_safByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'ไม่สามารถดึงข้อมูลใบปรับปรุงสินค้าได้',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 

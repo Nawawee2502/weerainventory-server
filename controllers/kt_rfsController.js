@@ -1,14 +1,13 @@
 const {
-  Kt_rfs,
-  Kt_rfsdt,
+  Kt_rfs: Kt_rfsModel,
+  Kt_rfsdt: Kt_rfsdtModel,
   Kt_stockcard,
   Tbl_supplier,
   sequelize,
   Tbl_product,
   Tbl_kitchen,
-  Tbl_unit,
-  User,
-  Unit
+  Tbl_unit: unitModel,
+  User
 } = require("../models/mainModel");
 const { Op } = require("sequelize");
 
@@ -27,7 +26,7 @@ exports.addKt_rfs = async (req, res) => {
     }
 
     try {
-      await Kt_rfs.create({
+      await Kt_rfsModel.create({
         refno: headerData.refno,
         rdate: headerData.rdate,
         kitchen_code: headerData.kitchen_code,
@@ -45,7 +44,7 @@ exports.addKt_rfs = async (req, res) => {
         total_due: footerData.total_due || 0
       }, { transaction: t });
 
-      await Kt_rfsdt.bulkCreate(
+      await Kt_rfsdtModel.bulkCreate(
         productArrayData.map(item => ({
           refno: headerData.refno,
           product_code: item.product_code,
@@ -191,7 +190,7 @@ exports.updateKt_rfs = async (req, res) => {
     console.log("Using refno for update:", updateData.refno);
 
     // First update the header record
-    const updateResult = await Kt_rfs.update(
+    const updateResult = await Kt_rfsModel.update(
       {
         rdate: updateData.rdate,
         trdate: updateData.trdate,
@@ -215,7 +214,7 @@ exports.updateKt_rfs = async (req, res) => {
     );
 
     // Delete existing detail records so we can insert fresh ones
-    await Kt_rfsdt.destroy({
+    await Kt_rfsdtModel.destroy({
       where: { refno: updateData.refno },
       transaction: t
     });
@@ -237,7 +236,7 @@ exports.updateKt_rfs = async (req, res) => {
       // การแก้ไขสำคัญ: ใช้ for...of แทน Promise.all เพื่อจัดการข้อผิดพลาดได้ดีขึ้น
       for (const product of productsToInsert) {
         try {
-          await Kt_rfsdt.upsert(product, {
+          await Kt_rfsdtModel.upsert(product, {
             transaction: t,
             conflictFields: ['refno', 'product_code']
           });
@@ -272,7 +271,7 @@ exports.deleteKt_rfs = async (req, res) => {
   try {
     const { refno } = req.body;
 
-    await Kt_rfsdt.destroy({
+    await Kt_rfsdtModel.destroy({
       where: { refno },
       transaction: t
     });
@@ -282,7 +281,7 @@ exports.deleteKt_rfs = async (req, res) => {
       transaction: t
     });
 
-    const deleteResult = await Kt_rfs.destroy({
+    const deleteResult = await Kt_rfsModel.destroy({
       where: { refno },
       transaction: t
     });
@@ -318,7 +317,7 @@ exports.Kt_rfsAllrdate = async (req, res) => {
       wherekitchen = { kitchen_name: { [Op.like]: `%${kitchen_name}%` } };
     }
 
-    const kt_rfsShow = await Kt_rfs.findAll({
+    const kt_rfsShow = await Kt_rfsModel.findAll({
       include: [
         {
           model: Tbl_supplier,
@@ -357,75 +356,70 @@ exports.Kt_rfsAllrdate = async (req, res) => {
 
 exports.Kt_rfsAlljoindt = async (req, res) => {
   try {
-    const { offset, limit, rdate1, rdate2, rdate, supplier_code, kitchen_code, product_code } = req.body;
+    const { offset, limit, rdate1, rdate2, rdate, kitchen_code, product_code } = req.body;
+    const { Op } = require("sequelize");
 
     let whereClause = {};
-    if (rdate) whereClause.rdate = rdate;
-    if (rdate1 && rdate2) whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
-    if (kitchen_code) whereClause.kitchen_code = kitchen_code;
-    if (supplier_code && supplier_code !== '') whereClause.supplier_code = supplier_code;
 
-    let includes = [
-      {
-        model: Tbl_supplier,
-        attributes: ['supplier_code', 'supplier_name'],
-        required: false
-      },
-      {
-        model: Tbl_kitchen,
-        attributes: ['kitchen_code', 'kitchen_name'],
-        required: false
-      },
-      {
-        model: User,
-        as: 'user',
-        attributes: ['user_code', 'username'],
-        required: false
-      },
-      {
-        model: Kt_rfsdt,
-        required: false,
-        include: [
-          {
-            model: Tbl_unit,
-            attributes: ['unit_code', 'unit_name'],
-            required: false
-          }
-        ]
-      }
-    ];
-
-    // Add product search condition if product_code is provided
-    if (product_code) {
-      includes[3].include.push({
-        model: Tbl_product,
-        attributes: ['product_code', 'product_name'],
-        required: false,
-        where: {
-          product_name: { [Op.like]: `%${product_code}%` }
-        }
-      });
-    } else {
-      includes[3].include.push({
-        model: Tbl_product,
-        attributes: ['product_code', 'product_name'],
-        required: false
-      });
+    if (rdate) {
+      whereClause.rdate = rdate;
     }
 
-    const kt_rfs_headers = await Kt_rfs.findAll({
+    if (rdate1 && rdate2) {
+      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+    }
+
+    if (kitchen_code && kitchen_code !== '') {
+      whereClause.kitchen_code = kitchen_code;
+    }
+
+    let kt_rfs_headers = await Kt_rfsModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
-        'supplier_code', 'kitchen_code', 'taxable', 'nontaxable',
-        'total', 'instant_saving', 'delivery_surcharge',
-        'sale_tax', 'total_due', 'user_code', 'created_at'
+        'kitchen_code', 'supplier_code', 'taxable', 'nontaxable',
+        'total', 'user_code', 'created_at'
       ],
-      include: includes,
+      include: [
+        {
+          model: Kt_rfsdtModel,
+          attributes: ['product_code', 'qty', 'unit_code', 'uprice', 'tax1', 'amt', 'expire_date', 'texpire_date', 'temperature1'],
+          required: false
+        },
+        {
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
+          required: false
+        },
+        {
+          model: Tbl_supplier, // เพิ่มการรวม Tbl_supplier
+          attributes: ['supplier_code', 'supplier_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
+        }
+      ],
       where: whereClause,
       order: [['refno', 'ASC']],
-      offset,
-      limit
+      offset: offset,
+      limit: limit
     });
+
+    // Transform data to include names from relations
+    if (kt_rfs_headers) {
+      kt_rfs_headers = kt_rfs_headers.map(header => {
+        const headerData = header.toJSON();
+        return {
+          ...headerData,
+          kitchen_name: headerData.tbl_kitchen?.kitchen_name || '-',
+          supplier_name: headerData.tbl_supplier?.supplier_name || '-', // เพิ่มการดึงชื่อ supplier
+          username: headerData.user?.username || '-'
+        };
+      });
+    }
 
     res.status(200).send({
       result: true,
@@ -440,35 +434,67 @@ exports.Kt_rfsAlljoindt = async (req, res) => {
 
 exports.Kt_rfsByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    // ดึงค่า refno จาก request
+    let refnoValue = req.body.refno;
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+    }
 
-    const kt_rfsShow = await Kt_rfs.findOne({
+    console.log('กำลังดึงข้อมูลใบรับจากซัพพลายเออร์เลขที่:', refnoValue);
+
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
+      });
+    }
+
+    const kt_rfsShow = await Kt_rfsModel.findOne({
       include: [
         {
-          model: Kt_rfsdt,
+          model: Kt_rfsdtModel,
           include: [{
             model: Tbl_product,
             include: [
               {
-                model: Unit,
+                model: unitModel,
                 as: 'productUnit1',
-                required: true,
+                required: false,
               },
               {
-                model: Unit,
+                model: unitModel,
                 as: 'productUnit2',
-                required: true,
+                required: false,
               },
             ],
           }],
         },
+        {
+          model: Tbl_supplier,
+          required: false
+        },
+        {
+          model: Tbl_kitchen,
+          required: false
+        }
       ],
-      where: { refno: refno }
+      where: { refno: refnoValue.toString() }
     });
-    res.status(200).send({ result: true, data: kt_rfsShow });
+
+    if (!kt_rfsShow) {
+      return res.status(404).json({
+        result: false,
+        message: 'ไม่พบข้อมูลใบรับจากซัพพลายเออร์'
+      });
+    }
+
+    res.status(200).json({ result: true, data: kt_rfsShow });
   } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: error });
+    console.error('Error in Kt_rfsByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'ไม่สามารถดึงข้อมูลใบรับจากซัพพลายเออร์ได้'
+    });
   }
 };
 
@@ -486,7 +512,7 @@ exports.countKt_rfs = async (req, res) => {
       whereClause.rdate = rdate;
     }
 
-    const amount = await Kt_rfs.count({
+    const amount = await Kt_rfsModel.count({
       where: whereClause
     });
 
@@ -501,7 +527,7 @@ exports.searchKt_rfsrefno = async (req, res) => {
   try {
     const { refno } = req.body;
 
-    const kt_rfsShow = await Kt_rfs.findAll({
+    const kt_rfsShow = await Kt_rfsModel.findAll({
       where: {
         refno: {
           [Op.like]: `%${refno}%`
@@ -532,7 +558,7 @@ exports.Kt_rfsrefno = async (req, res) => {
       };
     }
 
-    const refno = await Kt_rfs.findOne({
+    const refno = await Kt_rfsModel.findOne({
       where: whereClause,
       order: [['refno', 'DESC']],
     });
@@ -546,7 +572,7 @@ exports.Kt_rfsrefno = async (req, res) => {
 
 exports.searchKt_rfsRunno = async (req, res) => {
   try {
-    const kt_rfsShow = await Kt_rfs.findAll({
+    const kt_rfsShow = await Kt_rfsModel.findAll({
       where: {
         myear: req.body.myear,
         monthh: req.body.monthh
@@ -580,7 +606,7 @@ exports.getKtRfsByRefno = async (req, res) => {
     }
 
     // ใช้ค่า refnoValue ที่แปลงแล้วในการค้นหาข้อมูล
-    const orderData = await Kt_rfs.findOne({
+    const orderData = await Kt_rfsModel.findOne({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
         'supplier_code', 'kitchen_code', 'taxable', 'nontaxable',

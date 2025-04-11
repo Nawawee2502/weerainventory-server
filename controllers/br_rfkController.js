@@ -317,48 +317,47 @@ exports.Br_rfkAllrdate = async (req, res) => {
 
 exports.Br_rfkAlljoindt = async (req, res) => {
   try {
-    const { offset, limit, rdate1, rdate2, rdate, kitchen_code, branch_code, product_code } = req.body;
+    const { offset, limit, rdate1, rdate2, kitchen_code, branch_code, refno } = req.body;
+
+    console.log("Br_rfkAlljoindt ได้รับ parameters:", {
+      offset, limit, rdate1, rdate2, kitchen_code, branch_code, refno
+    });
 
     let whereClause = {};
 
-    if (rdate) {
-      whereClause.rdate = rdate;
+    if (refno) {
+      whereClause.refno = refno;
+    } else {
+      if (rdate1 && rdate2) {
+        whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+      }
+
+      if (branch_code) {
+        whereClause.branch_code = branch_code;
+      }
+
+      if (kitchen_code) {
+        whereClause.kitchen_code = kitchen_code;
+      }
     }
 
-    if (rdate1 && rdate2) {
-      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
-    }
+    console.log("WHERE clause:", JSON.stringify(whereClause));
 
-    if (kitchen_code) {
-      whereClause.kitchen_code = kitchen_code;
-    }
-
-    if (branch_code) {
-      whereClause.branch_code = branch_code;
-    }
-
-    let productWhere = {};
-    if (product_code) {
-      productWhere = {
-        product_name: { [Op.like]: `%${product_code}%` }
-      };
-    }
-
+    // ยกเลิกการใช้ pagination ให้ดึงข้อมูลทั้งหมด
     const br_rfk_headers = await br_rfkModel.findAll({
       attributes: [
-        'refno', 'rdate', 'trdate', 'myear', 'monthh',
-        'kitchen_code', 'branch_code', 'taxable', 'nontaxable',
-        'total', 'user_code', 'created_at'
+        'refno', 'rdate', 'trdate', 'myear', 'monthh', 'branch_code', 'kitchen_code', 'total',
+        'user_code', 'created_at', 'updated_at', 'taxable', 'nontaxable'
       ],
       include: [
         {
-          model: Tbl_kitchen,
-          attributes: ['kitchen_code', 'kitchen_name'],
+          model: Tbl_branch,
+          attributes: ['branch_code', 'branch_name'],
           required: false
         },
         {
-          model: Tbl_branch,
-          attributes: ['branch_code', 'branch_name'],
+          model: Tbl_kitchen,
+          attributes: ['kitchen_code', 'kitchen_name'],
           required: false
         },
         {
@@ -366,36 +365,19 @@ exports.Br_rfkAlljoindt = async (req, res) => {
           as: 'user',
           attributes: ['user_code', 'username'],
           required: false
-        },
-        {
-          model: br_rfkdtModel,
-          required: false,
-          include: [
-            {
-              model: Tbl_product,
-              attributes: ['product_code', 'product_name'],
-              required: false,
-              where: productWhere
-            },
-            {
-              model: unitModel,
-              attributes: ['unit_code', 'unit_name'],
-              required: false
-            }
-          ]
         }
       ],
       where: whereClause,
-      order: [['refno', 'ASC']],
-      offset: parseInt(offset),
-      limit: parseInt(limit)
+      order: [['refno', 'DESC']] // เรียงจากใหม่ไปเก่า (DESC)
     });
+
+    console.log(`พบข้อมูลทั้งหมด ${br_rfk_headers.length} รายการ`);
 
     res.status(200).send({
       result: true,
-      data: br_rfk_headers
+      data: br_rfk_headers,
+      total: br_rfk_headers.length
     });
-
   } catch (error) {
     console.error("Error in Br_rfkAlljoindt:", error);
     res.status(500).send({

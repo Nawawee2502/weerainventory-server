@@ -348,8 +348,7 @@ exports.Kt_rfwAlljoindt = async (req, res) => {
       whereClause.kitchen_code = kitchen_code;
     }
 
-    // Removed supplier_code filter since it doesn't exist in the table
-
+    // Added include for Kt_rfwdt model to get temperature1
     let kt_rfw_headers = await Kt_rfwModel.findAll({
       attributes: [
         'refno', 'rdate', 'trdate', 'myear', 'monthh',
@@ -357,6 +356,11 @@ exports.Kt_rfwAlljoindt = async (req, res) => {
         'total', 'user_code', 'created_at'
       ],
       include: [
+        {
+          model: Kt_rfwdtModel,
+          attributes: ['product_code', 'qty', 'unit_code', 'uprice', 'tax1', 'amt', 'expire_date', 'texpire_date', 'temperature1'],
+          required: false
+        },
         {
           model: Tbl_kitchen,
           attributes: ['kitchen_code', 'kitchen_name'],
@@ -400,7 +404,20 @@ exports.Kt_rfwAlljoindt = async (req, res) => {
 
 exports.Kt_rfwByRefno = async (req, res) => {
   try {
-    const { refno } = req.body;
+    // ดึงค่า refno จาก request
+    let refnoValue = req.body.refno;
+    if (typeof refnoValue === 'object' && refnoValue !== null) {
+      refnoValue = refnoValue.refno || '';
+    }
+
+    console.log('กำลังดึงข้อมูลใบรับจากคลังเลขที่:', refnoValue);
+
+    if (!refnoValue) {
+      return res.status(400).json({
+        result: false,
+        message: 'ต้องระบุเลขที่อ้างอิง (refno)'
+      });
+    }
 
     const kt_rfwShow = await Kt_rfwModel.findOne({
       include: [
@@ -412,12 +429,12 @@ exports.Kt_rfwByRefno = async (req, res) => {
               {
                 model: unitModel,
                 as: 'productUnit1',
-                required: true,
+                required: false,
               },
               {
                 model: unitModel,
                 as: 'productUnit2',
-                required: true,
+                required: false,
               },
             ],
           }],
@@ -427,12 +444,23 @@ exports.Kt_rfwByRefno = async (req, res) => {
           required: false
         }
       ],
-      where: { refno: refno }
+      where: { refno: refnoValue.toString() }
     });
-    res.status(200).send({ result: true, data: kt_rfwShow });
+
+    if (!kt_rfwShow) {
+      return res.status(404).json({
+        result: false,
+        message: 'ไม่พบข้อมูลใบรับจากคลัง'
+      });
+    }
+
+    res.status(200).json({ result: true, data: kt_rfwShow });
   } catch (error) {
-    console.log(error);
-    res.status(500).send({ message: error });
+    console.error('Error in Kt_rfwByRefno:', error);
+    res.status(500).json({
+      result: false,
+      message: error.message || 'ไม่สามารถดึงข้อมูลใบรับจากคลังได้'
+    });
   }
 };
 
