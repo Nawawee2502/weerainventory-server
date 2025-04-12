@@ -589,6 +589,15 @@ const {
   Br_stockcardAll,
 } = require("../controllers/br_stockcardController")
 
+const {
+  addKt_minimum_stock,
+  updateKt_minimum_stock,
+  deleteKt_minimum_stock,
+  Query_Kt_minimum_stock,
+  SearchKt_minimum_stock,
+  countKt_minimum_stock,
+} = require("../controllers/kt_minimum_stockController")
+
 
 // const { checkAuth } = require("../middleware/checkAuth");
 const router = require("express").Router();
@@ -970,6 +979,14 @@ router.post("/updateKt_stockcard", updateKt_stockcard);
 router.post("/deleteKt_stockcard", deleteKt_stockcard);
 router.post("/countKt_stockcard", countKt_stockcard);
 router.post("/Kt_stockcardAll", Kt_stockcardAll)
+
+//กำหนดจำนวนสินค้าขั้นต่ำของครัว
+router.post("/addKt_minimum_stock", addKt_minimum_stock);
+router.post("/updateKt_minimum_stock", updateKt_minimum_stock);
+router.post("/deleteKt_minimum_stock", deleteKt_minimum_stock);
+router.post("/Query_Kt_minimum_stock", Query_Kt_minimum_stock);
+router.post("/SearchKt_minimum_stock", SearchKt_minimum_stock);
+router.post("/countKt_minimum_stock", countKt_minimum_stock);
 
 //กำหนดจำนวนสินค้าขั้นต่ำ
 router.post("/addBr_minnum_stock", addBr_minnum_stock);

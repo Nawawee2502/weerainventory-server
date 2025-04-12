@@ -17,6 +17,8 @@ exports.addKt_safdt = async (req, res) => {
       amt: req.body.amt,
       expire_date: req.body.expire_date,
       texpire_date: req.body.texpire_date,
+      beg1: req.body.beg1 || 0,
+      bal1: req.body.bal1 || 0
     });
     res.status(200).send({ result: true });
   } catch (error) {
@@ -35,6 +37,8 @@ exports.updateKt_safdt = async (req, res) => {
         amt: req.body.amt,
         expire_date: req.body.expire_date,
         texpire_date: req.body.texpire_date,
+        beg1: req.body.beg1 || 0,
+        bal1: req.body.bal1 || 0
       },
       {
         where: {
@@ -123,7 +127,7 @@ exports.countKt_safdt = async (req, res) => {
 exports.Kt_safdtAlljoindt = async (req, res) => {
   try {
     console.log("Request body in Kt_safdtAlljoindt:", req.body); // Log for debugging
-    
+
     // Extract refno properly, handling both string and object formats
     let refno;
     if (typeof req.body === 'object' && req.body !== null) {

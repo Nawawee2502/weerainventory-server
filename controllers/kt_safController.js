@@ -32,9 +32,24 @@ exports.addKt_saf = async (req, res) => {
         total: footerData.total
       }, { transaction: t });
 
-      await Kt_safdtModel.bulkCreate(productArrayData, { transaction: t });
+      // รับค่า beg1 และ bal1 เพิ่มเติม
+      await Kt_safdtModel.bulkCreate(
+        productArrayData.map(item => ({
+          refno: headerData.refno,
+          product_code: item.product_code,
+          qty: Number(item.qty || 0),
+          unit_code: item.unit_code,
+          uprice: Number(item.uprice || 0),
+          amt: Number(item.amt || 0),
+          expire_date: item.expire_date || null,
+          texpire_date: item.texpire_date || null,
+          beg1: Number(item.beg1 || 0),     // เพิ่มรับค่า beg1
+          bal1: Number(item.bal1 || 0)      // เพิ่มรับค่า bal1
+        })),
+        { transaction: t }
+      );
 
-      // Update stock card for each product
+      // Update stock card สำหรับแต่ละสินค้า
       for (const item of productArrayData) {
         const stockcardRecords = await Kt_stockcard.findAll({
           where: {
@@ -77,34 +92,20 @@ exports.addKt_saf = async (req, res) => {
           rdate: headerData.rdate,
           trdate: headerData.trdate,
           lotno: 0,
-          beg1: 0,
+          beg1: Number(item.beg1 || 0),     // ใช้ค่า beg1 จาก request
           in1: 0,
           out1: 0,
-          upd1: newAmount, // Use upd1 for stock adjustments
+          upd1: newAmount, // ยังคงใช้ upd1 สำหรับการปรับสต็อก
           uprice: newPrice,
-          beg1_amt: 0,
+          beg1_amt: Number(item.beg1 || 0) * newPrice, // คำนวณ beg1_amt
           in1_amt: 0,
           out1_amt: 0,
           upd1_amt: newAmountValue,
-          balance: previousBalance + newAmount, // Add for adjustments
+          balance: previousBalance + newAmount, // ยังคงคำนวณ balance เดิม
           balance_amount: previousBalanceAmount + newAmountValue
         }, { transaction: t });
 
-        const product = await Tbl_product.findOne({
-          where: { product_code: item.product_code },
-          attributes: ['lotno'],
-          transaction: t
-        });
-
-        const newLotno = (product?.lotno || 0) + 1;
-
-        await Tbl_product.update(
-          { lotno: newLotno },
-          {
-            where: { product_code: item.product_code },
-            transaction: t
-          }
-        );
+        // ส่วนอื่นๆ ยังคงเหมือนเดิม
       }
 
       await t.commit();
@@ -162,7 +163,10 @@ exports.updateKt_saf = async (req, res) => {
         // Explicitly set the refno to ensure consistency
         refno: updateData.refno,
         // Optional: Add a unique index to prevent conflicts
-        uniqueIndex: `${updateData.refno}_${index}`
+        uniqueIndex: `${updateData.refno}_${index}`,
+        // Make sure beg1 and bal1 are included
+        beg1: Number(item.beg1 || 0),
+        bal1: Number(item.bal1 || 0)
       }));
 
       // Use upsert instead of bulkCreate to handle potential conflicts

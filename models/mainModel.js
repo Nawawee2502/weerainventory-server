@@ -549,6 +549,41 @@ db.Kt_dpb = require("./kt_dpbModel")(sequelize, Sequelize)
 db.Kt_dpbdt = require("./kt_dpbdtModel")(sequelize, Sequelize)
 db.Kt_saf = require("./kt_safModel")(sequelize, Sequelize)
 db.Kt_safdt = require("./kt_safdtModel")(sequelize, Sequelize)
+db.Kt_minimum_stock = require("./kt_minimum_stockModel")(sequelize, Sequelize)
+
+// ความสัมพันธ์สำหรับ kt_minimum_stock
+db.Tbl_unit.hasMany(db.Kt_minimum_stock, {
+  foreignKey: 'unit_code',
+  sourceKey: 'unit_code'
+});
+
+db.Tbl_product.hasMany(db.Kt_minimum_stock, {
+  foreignKey: 'product_code',
+  sourceKey: 'product_code'
+});
+
+db.Tbl_kitchen.hasMany(db.Kt_minimum_stock, {
+  foreignKey: 'kitchen_code',
+  sourceKey: 'kitchen_code'
+});
+
+db.Kt_minimum_stock.belongsTo(db.Tbl_product, {
+  foreignKey: 'product_code',
+  targetKey: 'product_code',
+  as: 'tbl_product'
+});
+
+db.Kt_minimum_stock.belongsTo(db.Tbl_unit, {
+  foreignKey: 'unit_code',
+  targetKey: 'unit_code',
+  as: 'tbl_unit'
+});
+
+db.Kt_minimum_stock.belongsTo(db.Tbl_kitchen, {
+  foreignKey: 'kitchen_code',
+  targetKey: 'kitchen_code',
+  as: 'tbl_kitchen'
+});
 
 //stock card
 db.Kt_stockcard.belongsTo(db.Tbl_unit, {
