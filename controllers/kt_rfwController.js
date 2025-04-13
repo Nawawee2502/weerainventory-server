@@ -10,6 +10,7 @@ const {
   Tbl_unit: unitModel,
   Kt_product_lotno
 } = require("../models/mainModel");
+const { Op } = require("sequelize");
 
 exports.addKt_rfw = async (req, res) => {
   const t = await sequelize.transaction();
@@ -90,28 +91,6 @@ exports.addKt_rfw = async (req, res) => {
         const previousBalance = totals.beg1 + totals.in1 + totals.upd1 - totals.out1;
         const previousBalanceAmount = totals.beg1_amt + totals.in1_amt + totals.upd1_amt - totals.out1_amt;
 
-        await Kt_stockcard.create({
-          myear: headerData.myear,
-          monthh: headerData.monthh,
-          product_code: item.product_code,
-          unit_code: item.unit_code,
-          refno: headerData.refno,
-          kitchen_code: headerData.kitchen_code,
-          rdate: headerData.rdate,
-          trdate: headerData.trdate,
-          lotno: 0,
-          beg1: 0,
-          in1: qty,
-          out1: 0,
-          upd1: 0,
-          uprice: uprice,
-          beg1_amt: 0,
-          in1_amt: amount,
-          out1_amt: 0,
-          upd1_amt: 0,
-          balance: previousBalance + qty,
-          balance_amount: previousBalanceAmount + amount
-        }, { transaction: t });
 
         // const product = await Tbl_product.findOne({
         //   where: { product_code: item.product_code },
@@ -310,12 +289,7 @@ exports.Kt_rfwAllrdate = async (req, res) => {
       where: {
         trdate: { [Op.between]: [rdate1, rdate2] }
       },
-      attributes: {
-        include: [
-          'balance',
-          'balance_amount'
-        ]
-      }
+
     });
 
     res.status(200).send({
@@ -331,36 +305,24 @@ exports.Kt_rfwAllrdate = async (req, res) => {
 
 exports.Kt_rfwAlljoindt = async (req, res) => {
   try {
-    const { offset, limit, rdate1, rdate2, rdate, kitchen_code, product_code } = req.body;
-    const { Op } = require("sequelize");
+    const { offset, limit, rdate1, rdate2, kitchen_code, product_code } = req.body;
+    console.log("API Request:", req.body);
 
-    let whereClause = {};
-
-    if (rdate) {
-      whereClause.rdate = rdate;
-    }
+    // ขั้นตอนที่ 1: ดึงข้อมูล header ด้วยเงื่อนไขการค้นหา
+    let whereHeaders = {};
 
     if (rdate1 && rdate2) {
-      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+      whereHeaders.trdate = { [Op.between]: [rdate1, rdate2] };
     }
 
     if (kitchen_code && kitchen_code !== '') {
-      whereClause.kitchen_code = kitchen_code;
+      whereHeaders.kitchen_code = kitchen_code;
     }
 
-    // Added include for Kt_rfwdt model to get temperature1
-    let kt_rfw_headers = await Kt_rfwModel.findAll({
-      attributes: [
-        'refno', 'rdate', 'trdate', 'myear', 'monthh',
-        'kitchen_code', 'taxable', 'nontaxable',
-        'total', 'user_code', 'created_at'
-      ],
+    // ทำการค้นหา header เอกสาร
+    const headers = await Kt_rfwModel.findAll({
+      where: whereHeaders,
       include: [
-        {
-          model: Kt_rfwdtModel,
-          attributes: ['product_code', 'qty', 'unit_code', 'uprice', 'tax1', 'amt', 'expire_date', 'texpire_date', 'temperature1'],
-          required: false
-        },
         {
           model: Tbl_kitchen,
           attributes: ['kitchen_code', 'kitchen_name'],
@@ -373,34 +335,113 @@ exports.Kt_rfwAlljoindt = async (req, res) => {
           required: false
         }
       ],
-      where: whereClause,
-      order: [['refno', 'ASC']],
-      offset: offset,
-      limit: limit
+      raw: true,
+      nest: true
     });
 
-    // Transform data to include names from relations
-    if (kt_rfw_headers) {
-      kt_rfw_headers = kt_rfw_headers.map(header => {
-        const headerData = header.toJSON();
-        return {
-          ...headerData,
-          kitchen_name: headerData.tbl_kitchen?.kitchen_name || '-',
-          username: headerData.user?.username || '-'
-        };
+    console.log(`Found ${headers.length} headers`);
+
+    if (headers.length === 0) {
+      return res.status(200).send({
+        result: true,
+        data: [],
+        total: 0
       });
     }
 
-    res.status(200).send({
+    // ขั้นตอนที่ 2: ดึงข้อมูล details จาก headers ที่พบ
+    const refnos = headers.map(h => h.refno);
+
+    let whereDetails = {
+      refno: { [Op.in]: refnos }
+    };
+
+    // เพิ่มเงื่อนไขการค้นหาด้วย product_code (ถ้ามี)
+    if (product_code && product_code !== '') {
+      whereDetails.product_code = product_code;
+    }
+
+    const details = await Kt_rfwdtModel.findAll({
+      where: whereDetails,
+      include: [
+        {
+          model: Tbl_product,
+          attributes: ['product_code', 'product_name'],
+          required: false
+        },
+        {
+          model: unitModel,
+          attributes: ['unit_code', 'unit_name'],
+          required: false
+        }
+      ],
+      raw: true,
+      nest: true
+    });
+
+    console.log(`Found ${details.length} details`);
+
+    // ขั้นตอนที่ 3: รวมข้อมูล header และ detail เข้าด้วยกัน
+    const headerMap = {};
+    headers.forEach(header => {
+      headerMap[header.refno] = header;
+    });
+
+    const flattenedData = details.map(detail => ({
+      date: formatDateForDisplay(headerMap[detail.refno]?.rdate),
+      refno: detail.refno,
+      kitchen: headerMap[detail.refno]?.tbl_kitchen?.kitchen_name,
+      product_id: detail.product_code,
+      product_name: detail.tbl_product?.product_name,
+      quantity: detail.qty,
+      unit_price: detail.uprice,
+      expireDate: formatDateForDisplay(detail.expiry_date),
+      unit_code: detail.tbl_unit?.unit_name,
+      amount: detail.amt,
+      total: headerMap[detail.refno]?.total,
+      user_code: headerMap[detail.refno]?.user?.username
+    }));
+
+    console.log(`Returning ${flattenedData.length} flattened records`);
+
+    return res.status(200).send({
       result: true,
-      data: kt_rfw_headers
+      data: flattenedData,
+      total: flattenedData.length
     });
 
   } catch (error) {
     console.error("Error in Kt_rfwAlljoindt:", error);
-    res.status(500).send({ message: error.message });
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
+
+// ฟังก์ชันช่วยจัดรูปแบบวันที่
+function formatDateForDisplay(dateStr) {
+  if (!dateStr) return null;
+
+  try {
+    // รองรับหลายรูปแบบของวันที่
+    let date;
+    if (dateStr.length === 8) { // Format: YYYYMMDD
+      const year = dateStr.substring(0, 4);
+      const month = dateStr.substring(4, 6);
+      const day = dateStr.substring(6, 8);
+      date = `${month}/${day}/${year}`;
+    } else {
+      // กรณีอื่นๆ ให้ใช้วันที่ต้นฉบับ
+      date = dateStr;
+    }
+
+    return date;
+  } catch (e) {
+    console.error("Error formatting date:", e);
+    return dateStr;
+  }
+}
 
 exports.Kt_rfwByRefno = async (req, res) => {
   try {

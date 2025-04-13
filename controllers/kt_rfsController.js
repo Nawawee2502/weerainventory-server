@@ -357,78 +357,226 @@ exports.Kt_rfsAllrdate = async (req, res) => {
 exports.Kt_rfsAlljoindt = async (req, res) => {
   try {
     const { offset, limit, rdate1, rdate2, rdate, kitchen_code, product_code } = req.body;
+    const { refno } = req.body;
     const { Op } = require("sequelize");
 
-    let whereClause = {};
+    // ตรวจสอบว่ามีการค้นหาด้วย product_code หรือไม่
+    const isSearchByProduct = product_code && product_code !== '';
 
-    if (rdate) {
-      whereClause.rdate = rdate;
-    }
-
-    if (rdate1 && rdate2) {
-      whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
-    }
-
-    if (kitchen_code && kitchen_code !== '') {
-      whereClause.kitchen_code = kitchen_code;
-    }
-
-    let kt_rfs_headers = await Kt_rfsModel.findAll({
-      attributes: [
-        'refno', 'rdate', 'trdate', 'myear', 'monthh',
-        'kitchen_code', 'supplier_code', 'taxable', 'nontaxable',
-        'total', 'user_code', 'created_at'
-      ],
-      include: [
-        {
-          model: Kt_rfsdtModel,
-          attributes: ['product_code', 'qty', 'unit_code', 'uprice', 'tax1', 'amt', 'expire_date', 'texpire_date', 'temperature1'],
-          required: false
+    // กรณีค้นหาด้วย product_code
+    if (isSearchByProduct) {
+      // ค้นหาเลข refno ที่มีสินค้านี้ในตาราง detail
+      const productDetails = await Kt_rfsdtModel.findAll({
+        attributes: ['refno'],
+        where: {
+          product_code: product_code
         },
-        {
-          model: Tbl_kitchen,
-          attributes: ['kitchen_code', 'kitchen_name'],
-          required: false
-        },
-        {
-          model: Tbl_supplier, // เพิ่มการรวม Tbl_supplier
-          attributes: ['supplier_code', 'supplier_name'],
-          required: false
-        },
-        {
-          model: User,
-          as: 'user',
-          attributes: ['user_code', 'username'],
-          required: false
+        raw: true
+      });
+
+      // ถ้าไม่พบรายการสินค้านี้ ส่งผลลัพธ์ว่างกลับไป
+      if (productDetails.length === 0) {
+        return res.status(200).send({
+          result: true,
+          data: [],
+          total: 0,
+          message: 'No records found with this product code'
+        });
+      }
+
+      // สร้าง array ของ refno ที่พบ
+      const refnosWithProduct = productDetails.map(item => item.refno);
+
+      // สร้างเงื่อนไขค้นหา
+      let whereClause = {
+        refno: {
+          [Op.in]: refnosWithProduct
         }
-      ],
-      where: whereClause,
-      order: [['refno', 'ASC']],
-      offset: offset,
-      limit: limit
-    });
+      };
 
-    // Transform data to include names from relations
-    if (kt_rfs_headers) {
-      kt_rfs_headers = kt_rfs_headers.map(header => {
-        const headerData = header.toJSON();
-        return {
-          ...headerData,
-          kitchen_name: headerData.tbl_kitchen?.kitchen_name || '-',
-          supplier_name: headerData.tbl_supplier?.supplier_name || '-', // เพิ่มการดึงชื่อ supplier
-          username: headerData.user?.username || '-'
-        };
+      // เพิ่มเงื่อนไขวันที่ถ้ามีการระบุ
+      if (rdate) {
+        whereClause.rdate = rdate;
+      } else if (rdate1 && rdate2) {
+        whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+      }
+
+      // เพิ่มเงื่อนไข kitchen_code ถ้ามีการระบุ
+      if (kitchen_code && kitchen_code !== '') {
+        whereClause.kitchen_code = kitchen_code;
+      }
+
+      // นับจำนวนรายการทั้งหมด
+      const totalCount = await Kt_rfsModel.count({
+        where: whereClause
+      });
+
+      // ดึงข้อมูล header พร้อม join ข้อมูลที่เกี่ยวข้อง
+      let kt_rfs_headers = await Kt_rfsModel.findAll({
+        attributes: [
+          'refno', 'rdate', 'trdate', 'myear', 'monthh',
+          'kitchen_code', 'supplier_code', 'taxable', 'nontaxable',
+          'total', 'user_code', 'created_at'
+        ],
+        include: [
+          {
+            model: Kt_rfsdtModel,
+            required: true, // ต้องมีข้อมูลใน detail
+            where: {
+              product_code: product_code
+            },
+            include: [{
+              model: Tbl_product,
+              attributes: ['product_code', 'product_name'],
+              required: false
+            },
+            {
+              model: unitModel,
+              attributes: ['unit_code', 'unit_name'],
+              required: false
+            }]
+          },
+          {
+            model: Tbl_kitchen,
+            attributes: ['kitchen_code', 'kitchen_name'],
+            required: false
+          },
+          {
+            model: Tbl_supplier,
+            attributes: ['supplier_code', 'supplier_name'],
+            required: false
+          },
+          {
+            model: User,
+            as: 'user',
+            attributes: ['user_code', 'username'],
+            required: false
+          }
+        ],
+        where: whereClause,
+        order: [['refno', 'ASC']],
+        offset: parseInt(offset) || 0,
+        limit: parseInt(limit) || 10
+      });
+
+      // แปลงข้อมูลเพื่อให้มีชื่อจาก relations
+      if (kt_rfs_headers) {
+        kt_rfs_headers = kt_rfs_headers.map(header => {
+          const headerData = header.toJSON();
+          return {
+            ...headerData,
+            kitchen_name: headerData.tbl_kitchen?.kitchen_name || '-',
+            supplier_name: headerData.tbl_supplier?.supplier_name || '-',
+            username: headerData.user?.username || '-'
+          };
+        });
+      }
+
+      return res.status(200).send({
+        result: true,
+        data: kt_rfs_headers,
+        total: totalCount
+      });
+    }
+    else {
+      // กรณีไม่ได้ค้นหาด้วย product_code ให้ใช้การค้นหาแบบเดิม
+      let whereClause = {};
+
+      // ถ้ามีการระบุ refno ให้ใช้เป็นเงื่อนไขหลัก
+      if (refno) {
+        whereClause.refno = refno;
+      } else {
+        // ถ้าไม่ระบุ refno ให้ใช้เงื่อนไขวันที่
+        if (rdate) {
+          whereClause.rdate = rdate;
+        } else if (rdate1 && rdate2) {
+          whereClause.trdate = { [Op.between]: [rdate1, rdate2] };
+        }
+
+        if (kitchen_code && kitchen_code !== '') {
+          whereClause.kitchen_code = kitchen_code;
+        }
+      }
+
+      // นับจำนวนรายการทั้งหมด
+      let totalCount = 0;
+      if (!refno && rdate1 && rdate2) {
+        const totalResult = await sequelize.query(
+          'SELECT COUNT(refno) as count FROM kt_rfs WHERE trdate BETWEEN ? AND ?',
+          {
+            replacements: [rdate1, rdate2],
+            type: sequelize.QueryTypes.SELECT
+          }
+        );
+        totalCount = totalResult[0].count;
+      }
+
+      let kt_rfs_headers = await Kt_rfsModel.findAll({
+        attributes: [
+          'refno', 'rdate', 'trdate', 'myear', 'monthh',
+          'kitchen_code', 'supplier_code', 'taxable', 'nontaxable',
+          'total', 'user_code', 'created_at'
+        ],
+        include: [
+          {
+            model: Kt_rfsdtModel,
+            attributes: ['product_code', 'qty', 'unit_code', 'uprice', 'tax1', 'amt', 'expire_date', 'texpire_date', 'temperature1'],
+            required: false,
+            include: [{
+              model: Tbl_product,
+              attributes: ['product_code', 'product_name'],
+              required: false
+            }]
+          },
+          {
+            model: Tbl_kitchen,
+            attributes: ['kitchen_code', 'kitchen_name'],
+            required: false
+          },
+          {
+            model: Tbl_supplier,
+            attributes: ['supplier_code', 'supplier_name'],
+            required: false
+          },
+          {
+            model: User,
+            as: 'user',
+            attributes: ['user_code', 'username'],
+            required: false
+          }
+        ],
+        where: whereClause,
+        order: [['refno', 'ASC']],
+        offset: parseInt(offset) || 0,
+        limit: refno ? null : (parseInt(limit) || 10) // ไม่จำกัดถ้าค้นหาด้วย refno
+      });
+
+      // แปลงข้อมูลเพื่อให้มีชื่อจาก relations
+      if (kt_rfs_headers) {
+        kt_rfs_headers = kt_rfs_headers.map(header => {
+          const headerData = header.toJSON();
+          return {
+            ...headerData,
+            kitchen_name: headerData.tbl_kitchen?.kitchen_name || '-',
+            supplier_name: headerData.tbl_supplier?.supplier_name || '-',
+            username: headerData.user?.username || '-'
+          };
+        });
+      }
+
+      return res.status(200).send({
+        result: true,
+        data: kt_rfs_headers,
+        total: refno ? kt_rfs_headers.length : totalCount
       });
     }
 
-    res.status(200).send({
-      result: true,
-      data: kt_rfs_headers
-    });
-
   } catch (error) {
     console.error("Error in Kt_rfsAlljoindt:", error);
-    res.status(500).send({ message: error.message });
+    res.status(500).send({
+      result: false,
+      message: error.message
+    });
   }
 };
 
