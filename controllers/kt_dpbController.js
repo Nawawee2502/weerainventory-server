@@ -495,27 +495,10 @@ exports.Kt_dpbByRefno = async (req, res) => {
 
     console.log('Processing refno:', refnoValue, 'Type:', typeof refnoValue);
 
-    // ดึงข้อมูลด้วย Refno ที่แปลงเป็น string แล้ว
-    const Kt_dpbShow = await Kt_dpbModel.findOne({
+    // แยกการดึงข้อมูล header และ details เพื่อให้ง่ายต่อการดีบัก
+    // 1. ดึงข้อมูล header ก่อน
+    const header = await Kt_dpbModel.findOne({
       include: [
-        {
-          model: Kt_dpbdtModel,
-          include: [{
-            model: Tbl_product,
-            include: [
-              {
-                model: unitModel,
-                as: 'productUnit1',
-                required: false
-              },
-              {
-                model: unitModel,
-                as: 'productUnit2',
-                required: false
-              }
-            ]
-          }]
-        },
         {
           model: Tbl_kitchen,
           required: false
@@ -523,20 +506,88 @@ exports.Kt_dpbByRefno = async (req, res) => {
         {
           model: Tbl_branch,
           required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['user_code', 'username'],
+          required: false
         }
       ],
       where: { refno: refnoValue.toString() }
     });
 
-    if (!Kt_dpbShow) {
-      console.log('No data found for refno:', refnoValue);
+    if (!header) {
+      console.log('No header data found for refno:', refnoValue);
       return res.status(404).json({
         result: false,
         message: 'Dispatch not found'
       });
     }
 
-    res.status(200).json({ result: true, data: Kt_dpbShow });
+    // 2. ดึงข้อมูล details
+    const details = await Kt_dpbdtModel.findAll({
+      include: [
+        {
+          model: Tbl_product,
+          include: [
+            {
+              model: unitModel,
+              as: 'productUnit1',
+              required: false
+            },
+            {
+              model: unitModel,
+              as: 'productUnit2',
+              required: false
+            }
+          ],
+          required: false
+        },
+        {
+          model: unitModel,
+          required: false
+        }
+      ],
+      where: { refno: refnoValue.toString() },
+      order: [['product_code', 'ASC']]
+    });
+
+    console.log(`Found ${details.length} detail records for refno: ${refnoValue}`);
+
+    // 3. รวมข้อมูลทั้งหมดเข้าด้วยกัน
+    const result = header.toJSON();
+
+    // ตรวจสอบและจัดการข้อมูล details
+    const processedDetails = details.map(detail => {
+      const detailObj = detail.toJSON();
+
+      // ตรวจสอบว่ามีข้อมูลที่จำเป็นครบถ้วน
+      if (!detailObj.tbl_product) {
+        detailObj.tbl_product = { product_name: 'Product Description' };
+      }
+
+      if (!detailObj.tbl_unit) {
+        detailObj.tbl_unit = { unit_name: detailObj.unit_code || '' };
+      }
+
+      return detailObj;
+    });
+
+    // เพิ่ม details เข้าไปใน result
+    result.kt_dpbdts = processedDetails;
+
+    // Debug: แสดงข้อมูลตัวอย่าง
+    if (processedDetails.length > 0) {
+      console.log('Sample first detail item:', {
+        product_code: processedDetails[0].product_code,
+        product_name: processedDetails[0].tbl_product?.product_name || 'Not available',
+        qty: processedDetails[0].qty,
+        unit: processedDetails[0].tbl_unit?.unit_name || processedDetails[0].unit_code || 'Not available'
+      });
+    }
+
+    res.status(200).json({ result: true, data: result });
   } catch (error) {
     console.error('Error in Kt_dpbByRefno:', error);
     res.status(500).json({

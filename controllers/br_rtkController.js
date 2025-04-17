@@ -376,10 +376,9 @@ exports.Br_rtkAlljoindt = async (req, res) => {
 
 exports.Br_rtkByRefno = async (req, res) => {
     try {
-        // ตรวจสอบและแปลงค่า refno ให้เป็น string
+        // Step 1: Validate the refno parameter
         let refnoValue = req.body.refno;
 
-        // เช็คว่า refno เป็น object หรือไม่
         if (typeof refnoValue === 'object' && refnoValue !== null) {
             if (refnoValue.refno && typeof refnoValue.refno === 'string') {
                 refnoValue = refnoValue.refno.trim();
@@ -391,7 +390,6 @@ exports.Br_rtkByRefno = async (req, res) => {
             }
         }
 
-        // เช็คว่าเป็น string และไม่ใช่ค่าว่าง
         if (typeof refnoValue !== 'string' || !refnoValue.trim()) {
             return res.status(400).json({
                 result: false,
@@ -401,43 +399,29 @@ exports.Br_rtkByRefno = async (req, res) => {
 
         console.log('Processing refno:', refnoValue, 'Type:', typeof refnoValue);
 
-        const Br_rtkShow = await Br_rtkModel.findOne({
+        // Step 2: Get header data without including detail records
+        const Br_rtkHeader = await Br_rtkModel.findOne({
             include: [
-                {
-                    model: Br_rtkdtModel,
-                    include: [{
-                        model: Tbl_product,
-                        include: [
-                            {
-                                model: unitModel,
-                                as: 'productUnit1',
-                                required: false
-                            },
-                            {
-                                model: unitModel,
-                                as: 'productUnit2',
-                                required: false
-                            }
-                        ]
-                    },
-                    {
-                        model: unitModel,
-                        required: false
-                    }]
-                },
                 {
                     model: Tbl_kitchen,
                     required: false
                 },
                 {
                     model: Tbl_branch,
+                    attributes: ['branch_code', 'branch_name', 'addr1', 'addr2', 'tel1'],
+                    required: false
+                },
+                {
+                    model: User,
+                    as: 'user',
+                    attributes: ['user_code', 'username'],
                     required: false
                 }
             ],
             where: { refno: refnoValue.toString() }
         });
 
-        if (!Br_rtkShow) {
+        if (!Br_rtkHeader) {
             console.log('No data found for refno:', refnoValue);
             return res.status(404).json({
                 result: false,
@@ -445,7 +429,72 @@ exports.Br_rtkByRefno = async (req, res) => {
             });
         }
 
-        res.status(200).json({ result: true, data: Br_rtkShow });
+        // Step 3: Get detail records separately (similar to GRF implementation)
+        const Br_rtkDetails = await Br_rtkdtModel.findAll({
+            include: [
+                {
+                    model: Tbl_product,
+                    include: [
+                        {
+                            model: unitModel,
+                            as: 'productUnit1',
+                            required: false
+                        },
+                        {
+                            model: unitModel,
+                            as: 'productUnit2',
+                            required: false
+                        }
+                    ],
+                    required: false
+                },
+                {
+                    model: unitModel,
+                    required: false
+                }
+            ],
+            where: { refno: refnoValue.toString() },
+            order: [['product_code', 'ASC']]
+        });
+
+        console.log(`Found ${Br_rtkDetails.length} detail records for refno: ${refnoValue}`);
+
+        // Step 4: Transform data into plain objects (similar to GRF implementation)
+        const result = Br_rtkHeader.toJSON();
+
+        // Process details and ensure all required properties exist
+        const processedDetails = Br_rtkDetails.map(detail => {
+            const detailObj = detail.toJSON();
+
+            // Ensure we have all the properties needed
+            if (!detailObj.tbl_product) {
+                detailObj.tbl_product = { product_name: 'Product Description' };
+            }
+
+            if (!detailObj.tbl_unit) {
+                detailObj.tbl_unit = { unit_name: detailObj.unit_code || '' };
+            }
+
+            return detailObj;
+        });
+
+        // Add the details array to the result object with the same property name (br_rtkdts)
+        result.br_rtkdts = processedDetails;
+
+        // Log sample data for debugging
+        if (processedDetails.length > 0) {
+            console.log('Sample first detail item:', {
+                product_code: processedDetails[0].product_code,
+                product_name: processedDetails[0].tbl_product?.product_name || 'Not available',
+                qty: processedDetails[0].qty,
+                unit: processedDetails[0].tbl_unit?.unit_name || processedDetails[0].unit_code || 'Not available'
+            });
+        }
+
+        res.status(200).json({
+            result: true,
+            data: result
+        });
     } catch (error) {
         console.error('Error in Br_rtkByRefno:', error);
         res.status(500).json({
