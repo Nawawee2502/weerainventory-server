@@ -134,6 +134,9 @@ module.exports = (sequelize, DataTypes) => {
             menu_setbr_report: {
                 type: DataTypes.STRING(10),
             },
+            menu_setbr_request_to_kitchen: {
+                type: DataTypes.STRING(10),
+            },
         },
         {
             freezeTableName: true,

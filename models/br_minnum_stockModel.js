@@ -13,6 +13,9 @@ module.exports = (sequelize, Sequelize) => {
     },
     min_qty: {
       type: Sequelize.DECIMAL(12, 2)
+    },
+    max_qty: {
+      type: Sequelize.DECIMAL(12, 2)
     }
   },
     {

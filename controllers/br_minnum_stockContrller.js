@@ -26,7 +26,8 @@ exports.addBr_minnum_stock = async (req, res) => {
       product_code: req.body.product_code,
       branch_code: req.body.branch_code,
       unit_code: req.body.unit_code,
-      min_qty: req.body.min_qty
+      min_qty: req.body.min_qty,
+      max_qty: req.body.max_qty // Add max_qty field
     });
 
     res.status(200).send({ result: true });
@@ -42,7 +43,8 @@ exports.updateBr_minnum_stock = async (req, res) => {
     const [updatedRows] = await Br_minnum_stockModel.update(
       {
         unit_code: req.body.unit_code,
-        min_qty: req.body.min_qty
+        min_qty: req.body.min_qty,
+        max_qty: req.body.max_qty // Add max_qty field
       },
       {
         where: {

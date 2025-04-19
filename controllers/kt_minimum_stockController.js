@@ -26,7 +26,8 @@ exports.addKt_minimum_stock = async (req, res) => {
             product_code: req.body.product_code,
             kitchen_code: req.body.kitchen_code,
             unit_code: req.body.unit_code,
-            min_qty: req.body.min_qty
+            min_qty: req.body.min_qty,
+            max_qty: req.body.max_qty // Add max_qty field
         });
 
         res.status(200).send({ result: true });
@@ -42,7 +43,8 @@ exports.updateKt_minimum_stock = async (req, res) => {
         const [updatedRows] = await Kt_minimum_stockModel.update(
             {
                 unit_code: req.body.unit_code,
-                min_qty: req.body.min_qty
+                min_qty: req.body.min_qty,
+                max_qty: req.body.max_qty // Add max_qty field
             },
             {
                 where: {
